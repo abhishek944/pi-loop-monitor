@@ -6,16 +6,12 @@ import type {
 import { formatTrigger } from "../loop-format.js";
 import { isValidCronExpression, parseInterval } from "../loop-parse.js";
 import type { DynamicLoopState, LoopEntry, Trigger } from "../types.js";
-import { formatWorkflowInspection, workflowActivityLabel } from "../ui/workflow-presentation.js";
-import { isTerminalWorkflowRun } from "../workflow-reducer.js";
 
 interface LoopStoreLike {
   list(): LoopEntry[];
   get(id: string): LoopEntry | undefined;
   create(trigger: Trigger, prompt: string, options: {
     recurring: boolean;
-    autoTask?: boolean;
-    taskBacklog?: boolean;
     readOnly?: boolean;
     maxFires?: number;
     dynamic?: Partial<DynamicLoopState>;
@@ -35,9 +31,7 @@ export interface LoopCommandOptions {
   getStore: () => LoopStoreLike;
   getTriggerSystem: () => TriggerSystemLike;
   updateWidget: () => void;
-  maybeBootstrapTaskLoop?: (entry: LoopEntry) => Promise<boolean>;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
-  cancelOrchestration?: (id: string, action: "pause" | "delete") => Promise<boolean>;
 }
 
 type LoopCommandRoute =
@@ -79,7 +73,7 @@ function parseLoopCommandRoute(input: string): LoopCommandRoute {
 }
 
 export function registerLoopCommand(options: LoopCommandOptions): void {
-  const { pi, getStore, getTriggerSystem, updateWidget, maybeBootstrapTaskLoop, onDynamicLoopActivated, cancelOrchestration } = options;
+  const { pi, getStore, getTriggerSystem, updateWidget, onDynamicLoopActivated } = options;
 
   function createCronLoop(ui: ExtensionUIContext, interval: string, prompt: string, notifyEvery: boolean) {
     let entry: LoopEntry | undefined;
@@ -119,19 +113,10 @@ export function registerLoopCommand(options: LoopCommandOptions): void {
     if (!source) return;
 
     const trigger: Trigger = { type: "event", source };
-    const taskBacklog = source === "tasks:created";
-    const entry = getStore().create(trigger, p, {
-      recurring: true,
-      taskBacklog,
-      maxFires: taskBacklog ? 25 : undefined,
-    });
+    const entry = getStore().create(trigger, p, { recurring: true });
     getTriggerSystem().add(entry);
     updateWidget();
-    const bootstrapped = taskBacklog ? await maybeBootstrapTaskLoop?.(entry) : false;
-    const adoption = taskBacklog
-      ? `; adopts unfinished tasks${bootstrapped ? " (initial wake queued)" : ""}`
-      : "";
-    ui.notify(`Event loop #${entry.id} created: fires on "${source}"${adoption}`, "info");
+    ui.notify(`Event loop #${entry.id} created: fires on "${source}"`, "info");
   }
 
   function dynamicLoop(ui: ExtensionUIContext, goal: string) {
@@ -154,11 +139,9 @@ export function registerLoopCommand(options: LoopCommandOptions): void {
       return;
     }
 
-    const now = Date.now();
     const choices = loops.map((l) => {
       const icon = l.status === "active" ? "*" : l.status === "paused" ? "-" : "x";
-      const activity = l.workflow ? ` [activity:${workflowActivityLabel(l, now)}]` : "";
-      return `${icon} #${l.id} [${l.status}] ${l.prompt.slice(0, 50)}${activity} (${formatTrigger(l.trigger, "command")})`;
+      return `${icon} #${l.id} [${l.status}] ${l.prompt.slice(0, 50)} (${formatTrigger(l.trigger, "command")})`;
     });
     choices.push("< Back");
 
@@ -174,31 +157,21 @@ export function registerLoopCommand(options: LoopCommandOptions): void {
         else if (
           entry.status === "paused"
           && Date.now() < entry.expiresAt
-          && !entry.orchestration
-          && !isTerminalWorkflowRun(entry.workflow)
         ) actions.unshift("* Resume");
         actions.push("< Back");
 
-        const detail = entry.workflow
-          ? formatWorkflowInspection(entry)
-          : `#${entry.id}: ${entry.prompt}\nTrigger: ${JSON.stringify(entry.trigger)}`;
+        const detail = `#${entry.id}: ${entry.prompt}\nTrigger: ${JSON.stringify(entry.trigger)}`;
         const action = await ui.select(detail, actions);
 
         if (action === "x Delete") {
-          if (entry.orchestration) await cancelOrchestration?.(entry.id, "delete");
-          else {
-            getTriggerSystem().remove(entry.id);
-            getStore().delete(entry.id);
-            updateWidget();
-          }
+          getTriggerSystem().remove(entry.id);
+          getStore().delete(entry.id);
+          updateWidget();
           ui.notify(`Loop #${entry.id} deleted`, "info");
         } else if (action === "- Pause") {
-          if (entry.orchestration) await cancelOrchestration?.(entry.id, "pause");
-          else {
-            getStore().pause(entry.id);
-            getTriggerSystem().remove(entry.id);
-            updateWidget();
-          }
+          getStore().pause(entry.id);
+          getTriggerSystem().remove(entry.id);
+          updateWidget();
           ui.notify(`Loop #${entry.id} paused`, "info");
         } else if (action === "* Resume") {
           const resumed = getStore().resume(entry.id);

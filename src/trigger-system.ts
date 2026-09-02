@@ -3,7 +3,6 @@ import { atMaxFires } from "./loop-reducer.js";
 import type { CronScheduler } from "./scheduler.js";
 import type { LoopStore } from "./store.js";
 import type { LoopEntry, LoopFireOrigin } from "./types.js";
-import { isTerminalWorkflowRun } from "./workflow-reducer.js";
 
 export class TriggerSystem {
   private eventSubscriptions = new Map<string, Map<string, () => void>>();
@@ -20,7 +19,7 @@ export class TriggerSystem {
   start(): void {
     this.scheduler.start();
     for (const entry of this.store.list()) {
-      if (entry.status !== "active" || isTerminalWorkflowRun(entry.workflow)) continue;
+      if (entry.status !== "active") continue;
       if (entry.trigger.type !== "event" && entry.trigger.type !== "hybrid") continue;
       const event = entry.trigger.type === "hybrid" ? entry.trigger.event : entry.trigger;
       this.subscribeEvent(entry, event.source, event.filter);
@@ -38,7 +37,6 @@ export class TriggerSystem {
   }
 
   add(entry: LoopEntry): void {
-    if (isTerminalWorkflowRun(entry.workflow)) return;
     this.scheduler.add(entry);
     if (entry.trigger.type === "event" || entry.trigger.type === "hybrid") {
       const ev = entry.trigger.type === "hybrid" ? entry.trigger.event : entry.trigger;
@@ -104,13 +102,12 @@ export class TriggerSystem {
 
   private retire(entry: LoopEntry): void {
     this.remove(entry.id);
-    if (entry.workflow || entry.taskBacklog) this.store.pause(entry.id, "controller_limit", "trigger fire cap reached");
-    else this.store.delete(entry.id);
+    this.store.delete(entry.id);
   }
 
   private fireLoop(entry: LoopEntry): void {
     const current = this.store.get(entry.id);
-    if (current?.status !== "active" || isTerminalWorkflowRun(current?.workflow)) {
+    if (current?.status !== "active") {
       this.remove(entry.id);
       return;
     }

@@ -1,4 +1,4 @@
-import type { DynamicLoopState, OrchestrationState, WorkflowRunState } from "./types.js";
+import type { DynamicLoopState } from "./types.js";
 
 type ReducerSource = "tool" | "command" | "scheduler" | "eventbus" | "monitor" | "session" | "coordinator" | "system";
 
@@ -10,13 +10,8 @@ export interface ReducerNotification {
   trigger: unknown;
   recurring?: boolean;
   persistent?: boolean;
-  autoTask?: boolean;
-  taskBacklog?: boolean;
   readOnly?: boolean;
   dynamic?: DynamicLoopState;
-  workflow?: WorkflowRunState;
-  orchestration?: OrchestrationState;
-  orchestrationWakeSequence?: number;
   sessionGeneration?: number;
 }
 
@@ -43,7 +38,7 @@ export type NotificationReducerEvent =
     entityId?: string;
     payload: {
       key: string;
-      reason: "zero_pending_tasks" | "session_switch" | "session_shutdown" | "superseded";
+      reason: "session_switch" | "session_shutdown" | "superseded";
     };
   }
   | {

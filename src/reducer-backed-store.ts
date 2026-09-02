@@ -78,19 +78,15 @@ export interface ReducerBackedStoreConfig<TEntry, TState, TEvent, TData, TEffect
 }
 
 /**
- * Shared persistence + reducer-dispatch machinery for the file-backed entity
- * stores (loops, tasks). Owns file locking, signature-gated load, atomic
- * save, and reducer application; subclasses add only their entity-specific
- * command methods.
+ * Shared persistence and reducer-dispatch machinery for file-backed loop
+ * state. It owns file locking, signature-gated loading, atomic saves, and
+ * reducer application; the loop store adds its command methods.
  *
  * Durability boundary: every mutation runs inside {@link withLock}, which saves
  * the whole file after successful mutations. Rejected commands can explicitly
  * skip persistence so normalization during load does not rewrite the snapshot.
- * Reducer effects are
- * therefore *not* the persistence mechanism — they are surfaced to
- * {@link onEffects} (default: no-op) so cross-entity effects (e.g.
- * `DISPATCH_EVENT`, `REQUEST_GOAL_VERIFICATION`) can be forwarded by the runtime
- * without being silently dropped at the reducer call site.
+ * Reducer effects are not the persistence mechanism; they are surfaced to
+ * {@link onEffects} (default: no-op) for runtime-owned follow-up behavior.
  */
 export abstract class ReducerBackedStore<
   TEntry extends { id: string },

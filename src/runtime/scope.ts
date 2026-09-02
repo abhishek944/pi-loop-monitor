@@ -23,15 +23,3 @@ export function resolveLoopStorePath(options: ScopeOptions, sessionId?: string):
   if (loopScope === "session") return undefined;
   return join(cwd, ".pi", "loops", "loops.json");
 }
-
-export function resolveTaskStorePath(options: ScopeOptions, sessionId?: string): string | undefined {
-  const cwd = options.cwd ?? process.cwd();
-  const { loopScope } = options;
-
-  if (loopScope === "memory") return undefined;
-  if (loopScope === "session" && sessionId) {
-    return join(cwd, ".pi", "tasks", `tasks-${sessionId}.json`);
-  }
-  if (loopScope === "session") return undefined;
-  return join(cwd, ".pi", "tasks", "tasks.json");
-}

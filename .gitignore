@@ -1,7 +1,4 @@
 node_modules/
 dist/
-coverage/
-.artifacts/
-*.tsbuildinfo
 .pi/
 .DS_Store

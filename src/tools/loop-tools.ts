@@ -2,21 +2,15 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { formatTrigger } from "../loop-format.js";
 import { parseInterval } from "../loop-parse.js";
-import { getOrchestrationCounts } from "../orchestration-reducer.js";
 import type { LoopEntry, Trigger } from "../types.js";
 import { renderToolCall, renderToolResult, toolArg } from "../ui/tool-renderer.js";
-import { deriveWorkflowActivity, formatCompactWorkflowDuration } from "../ui/workflow-presentation.js";
-import { getActiveWorkflowStateLoop } from "../workflow-reducer.js";
 import { displayRows, textResult } from "./tool-result.js";
-import { formatWorkflowSummary } from "./workflow-tools.js";
 
 interface LoopStoreLike {
   list(): LoopEntry[];
   get(id: string): LoopEntry | undefined;
   create(trigger: Trigger, prompt: string, opts: {
     recurring: boolean;
-    autoTask?: boolean;
-    taskBacklog?: boolean;
     readOnly?: boolean;
     maxFires?: number;
     dynamic?: Partial<NonNullable<LoopEntry["dynamic"]>>;
@@ -32,7 +26,6 @@ interface LoopStoreLike {
     status: "completed" | "paused",
     expected: { status: LoopEntry["status"]; iteration: number; updatedAt: number },
   ): boolean;
-  getDeletionTombstone(id: string): { reason: string; pendingCount?: number } | undefined;
   delete(id: string): boolean;
 }
 
@@ -61,10 +54,7 @@ export interface LoopToolsOptions {
   getScheduler: () => SchedulerLike;
   getMonitorManager: () => MonitorManagerLike;
   updateWidget: () => void;
-  maybeBootstrapTaskLoop: (entry: LoopEntry) => Promise<boolean>;
-  isTaskSystemReady: () => boolean;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
-  cancelOrchestration?: (id: string, action: "pause" | "delete") => Promise<boolean>;
 }
 
 function validateTrigger(trigger: Trigger): string | null {
@@ -140,11 +130,6 @@ function formatDynamicUpdateResult(id: string, iteration: number | undefined, ne
     `\n${mode}`;
 }
 
-function formatDeletionTombstone(id: string, tombstone: { reason: string; pendingCount?: number }): string {
-  const detail = tombstone.pendingCount === undefined ? "" : ` (pending: ${tombstone.pendingCount})`;
-  return `Loop #${id} already auto-deleted: ${tombstone.reason}${detail}`;
-}
-
 function continueDynamicLoop(
   params: LoopUpdateParams,
   entry: LoopEntry & { dynamic: NonNullable<LoopEntry["dynamic"]> },
@@ -216,10 +201,7 @@ export function registerLoopTools(options: LoopToolsOptions): void {
     getScheduler,
     getMonitorManager,
     updateWidget,
-    maybeBootstrapTaskLoop,
-    isTaskSystemReady,
     onDynamicLoopActivated,
-    cancelOrchestration,
   } = options;
 
   pi.registerTool({
@@ -227,25 +209,22 @@ export function registerLoopTools(options: LoopToolsOptions): void {
     label: "LoopCreate",
     renderCall: renderToolCall("Loop", (args) => `create · ${String(toolArg(args, "prompt") ?? "scheduled work").slice(0, 56)}`),
     renderResult: renderToolResult,
-    description: `Create a persistent cron, event, hybrid, or idle loop for recurring checks, event reactions, or autonomous backlog processing; never use shell sleep loops. Polling needs maxFires; observation-only loops should be readOnly. A completed iteration, unchanged result, or temporarily empty check is not a reason to delete the loop.`,
+    description: `Create a persistent cron, event, hybrid, or idle loop for recurring checks and event reactions; never use shell sleep loops. Polling needs maxFires; observation-only loops should be readOnly. A completed iteration, unchanged result, or temporarily empty check is not a reason to delete the loop.`,
     promptGuidelines: [
-      "Prefer event triggers; use triggerType `idle` with trigger `idle` for agent-paced continuation of one evolving goal that does not need WorkflowCreate phases/outcomes.",
-      "For autonomous backlogs use event `tasks:created`, recurring true, taskBacklog true, and bounded maxFires; never combine taskBacklog with autoTask or manually delete its loop.",
+      "Prefer event triggers; use triggerType `idle` with trigger `idle` for agent-paced continuation of one evolving goal.",
       "Use LoopDelete only for explicit cancellation or a satisfied stop condition—not after a normal, empty, or unchanged iteration. Report the created loop ID.",
     ],
     parameters: Type.Object({
       trigger: Type.String({ description: "Cron expression (e.g., '5m', '1h', '0 9 * * 1-5'), event source (e.g., 'tool_execution_start'), hybrid spec, or literal 'idle' with triggerType='idle'" }),
       prompt: Type.String({ description: "Prompt to run when the loop fires" }),
       recurring: Type.Optional(Type.Boolean({ description: "Whether loop repeats (default: true)", default: true })),
-      autoTask: Type.Optional(Type.Boolean({ description: "Auto-create pi-tasks task on fire", default: false })),
-      taskBacklog: Type.Optional(Type.Boolean({ description: "Native task queue worker only: requires recurring event trigger 'tasks:created' and auto-deletes when pending tasks reach zero", default: false })),
       triggerType: Type.Optional(Type.String({ description: "cron, event, hybrid, or idle (cron/event inferred from trigger string if omitted)", enum: ["cron", "event", "hybrid", "idle"] })),
       debounceMs: Type.Optional(Type.Number({ description: "Debounce for hybrid triggers (default: 30000)", default: 30000 })),
       readOnly: Type.Optional(Type.Boolean({ description: "Restrict the agent to read-only tools when this loop fires (default: false)", default: false })),
       maxFires: Type.Optional(Type.Integer({ description: "Auto-stop after N fires. Prevents infinite token burn on polling loops.", minimum: 1 })),
     }),
     async execute(_toolCallId, params) {
-      const { trigger: triggerInput, prompt, recurring, autoTask, taskBacklog, triggerType, debounceMs, readOnly, maxFires } = params;
+      const { trigger: triggerInput, prompt, recurring, triggerType, debounceMs, readOnly, maxFires } = params;
 
       let trigger: Trigger;
       const inferred = triggerType ?? inferTriggerType(triggerInput);
@@ -289,31 +268,10 @@ export function registerLoopTools(options: LoopToolsOptions): void {
           expanded: [validationError],
         }));
       }
-      let backlogEventSource: string | undefined;
-      if (trigger.type === "event") backlogEventSource = trigger.source;
-      else if (trigger.type === "hybrid") backlogEventSource = trigger.event.source;
-      let backlogError: string | undefined;
-      if (taskBacklog && autoTask) backlogError = "taskBacklog loops cannot enable autoTask; backlog workers adopt existing tasks instead of creating more.";
-      else if (taskBacklog && recurring === false) backlogError = "taskBacklog loops must be recurring.";
-      else if (taskBacklog && backlogEventSource !== "tasks:created") {
-        backlogError = 'taskBacklog loops require a "tasks:created" event trigger. For a broad goal, use trigger "idle" with triggerType "idle" and omit taskBacklog.';
-      }
-      if (backlogError) {
-        return Promise.resolve(textResult(backlogError, {
-          kind: "loop",
-          action: "create",
-          tone: "error",
-          summary: "Backlog loop was not created",
-          expanded: [backlogError],
-        }));
-      }
-
       const entry = getStore().create(trigger, prompt, {
-        recurring: taskBacklog ? true : recurring ?? (inferred !== "event"),
-        autoTask,
-        taskBacklog,
+        recurring: recurring ?? (inferred !== "event"),
         readOnly,
-        maxFires: maxFires ?? (taskBacklog ? 25 : undefined),
+        maxFires,
         dynamic: trigger.type === "dynamic"
           ? { goal: prompt, iteration: 0 }
           : undefined,
@@ -338,7 +296,6 @@ export function registerLoopTools(options: LoopToolsOptions): void {
         }
       }
 
-      const bootstrapped = await maybeBootstrapTaskLoop(entry);
       updateWidget();
 
       const triggerDesc = trigger.type === "dynamic" ? "idle-driven" : formatTrigger(trigger, "create");
@@ -348,10 +305,6 @@ export function registerLoopTools(options: LoopToolsOptions): void {
         `Trigger: ${triggerDesc}\n` +
         `Recurring: ${entry.recurring}\n` +
         (trigger.type === "dynamic" ? "Wake: when idle (first wake queued now)\n" : "") +
-        (entry.autoTask ? "Auto-create task: enabled\n" : "") +
-        (entry.taskBacklog ? "Backlog worker: enabled\n" : "") +
-        (bootstrapped ? "Backlog: initial wake queued for existing pending tasks\n" : "") +
-        (isTaskSystemReady() ? "" : "Task system: not ready yet — autoTask may not fire until native fallback or pi-tasks becomes available\n") +
         `ID: ${entry.id} (persists until explicitly canceled or a configured stop condition is met)`,
         {
           kind: "loop",
@@ -361,7 +314,6 @@ export function registerLoopTools(options: LoopToolsOptions): void {
           expanded: [
             `Goal: ${entry.prompt}`,
             `Trigger: ${triggerDesc}`,
-            entry.autoTask ? "Auto-task: enabled" : "Auto-task: off",
           ],
         },
       ));
@@ -386,57 +338,21 @@ export function registerLoopTools(options: LoopToolsOptions): void {
       const lines: string[] = [];
       const now = Date.now();
       for (const entry of loops) {
-        const workflowSchedule = entry.workflow && getActiveWorkflowStateLoop(entry.workflow)?.schedule;
-        const triggerDesc = workflowSchedule ? `workflow cron: ${workflowSchedule}` : formatTrigger(entry.trigger, "list");
-
-        const nextFire = workflowSchedule || entry.trigger.type === "cron" || entry.trigger.type === "hybrid" || entry.dynamic?.nextWakeAt !== undefined
-          ? getScheduler().nextFire(entry.id)
-          : undefined;
-        const activity = entry.workflow ? deriveWorkflowActivity(entry, now) : undefined;
-        const statusIcon = entry.status === "active" ? "*" : entry.status === "paused" ? "-" : "x";
-        let line = `${statusIcon} #${entry.id} [${entry.status}] ${entry.prompt.slice(0, 60)}`;
-        line += ` (${triggerDesc})`;
-        if (activity) line += ` [activity:${activity.status} ${formatCompactWorkflowDuration(activity.activityMs)}]`;
+        const triggerDesc = formatTrigger(entry.trigger, "list");
+        const nextFire = entry.trigger.type === "cron" || entry.trigger.type === "hybrid" || entry.dynamic?.nextWakeAt !== undefined
+          ? getScheduler().nextFire(entry.id) : undefined;
+        const statusIcon = entry.status === "active" ? "*" : "-";
+        let line = `${statusIcon} #${entry.id} [${entry.status}] ${entry.prompt.slice(0, 60)} (${triggerDesc})`;
         line += ` expiresAt: ${new Date(entry.expiresAt).toISOString()}`;
-        if (nextFire) {
-          const remaining = Math.max(0, nextFire - now);
-          line += ` next: ${formatRemaining(remaining)}`;
-        }
-        if (activity) {
-          line += ` age: ${formatCompactWorkflowDuration(activity.workflowAgeMs)}`;
-        } else if (entry.status === "active") {
-          line += ` age: ${formatRemaining(Math.max(0, now - entry.createdAt))}`;
-        }
+        if (nextFire) line += ` next: ${formatRemaining(Math.max(0, nextFire - now))}`;
+        if (entry.status === "active") line += ` age: ${formatRemaining(Math.max(0, now - entry.createdAt))}`;
         if (entry.pause) line += ` [pause:${entry.pause.kind}]`;
-        if (entry.autoTask) line += " [auto-task]";
-        if (entry.taskBacklog) line += " [backlog-worker]";
-        if (entry.orchestration) {
-          const counts = getOrchestrationCounts(entry.orchestration);
-          line += ` [orchestration:${entry.orchestration.status}]`;
-          line += ` pending=${counts.pending} active=${counts.active} completed=${counts.completed} failed=${counts.failed} uncertain=${counts.uncertain}`;
-          lines.push(line);
-        } else if (entry.workflow && activity) {
-          line += ` [workflow:${entry.workflow.currentState} ${formatCompactWorkflowDuration(activity.stateAgeMs)}]`;
-          lines.push(formatWorkflowSummary(entry, line, undefined, now));
-        } else {
-          lines.push(line);
-        }
+        lines.push(line);
       }
-
-      const workflowCount = loops.filter((entry) => entry.workflow !== undefined).length;
-      const orchestrationCount = loops.filter((entry) => entry.orchestration !== undefined).length;
-      const ordinaryCount = loops.length - workflowCount - orchestrationCount;
-      const kinds = [
-        ordinaryCount > 0 ? `${ordinaryCount} loop${ordinaryCount === 1 ? "" : "s"}` : undefined,
-        workflowCount > 0 ? `${workflowCount} workflow${workflowCount === 1 ? "" : "s"}` : undefined,
-        orchestrationCount > 0 ? `${orchestrationCount} orchestration${orchestrationCount === 1 ? "" : "s"}` : undefined,
-      ].filter((label): label is string => label !== undefined);
       return Promise.resolve(textResult(lines.join("\n"), {
-        kind: "loop",
-        action: "list",
-        tone: "info",
-        summary: `${kinds.join(" · ")} · ${loops.filter((entry) => entry.status === "active").length} active`,
-        expanded: displayRows(lines, workflowCount > 0 ? 16 : 8),
+        kind: "loop", action: "list", tone: "info",
+        summary: `${loops.length} loop${loops.length === 1 ? "" : "s"} · ${loops.filter((entry) => entry.status === "active").length} active`,
+        expanded: displayRows(lines),
       }));
     },
   });
@@ -463,18 +379,6 @@ export function registerLoopTools(options: LoopToolsOptions): void {
       if (!entry) {
         return Promise.resolve(textResult(`Loop #${params.id} not found`, {
           kind: "loop", action: "update", tone: "error", summary: `Loop #${params.id} not found`, expanded: ["Use LoopList to find valid loop IDs."],
-        }));
-      }
-      if (entry.orchestration) {
-        const message = `Loop #${params.id} is orchestration-owned. Use OrchestrationGet to inspect it or LoopDelete to cancel it.`;
-        return Promise.resolve(textResult(message, {
-          kind: "loop", action: "update", tone: "error", summary: `Loop #${params.id} update rejected`, expanded: [message],
-        }));
-      }
-      if (entry.workflow) {
-        const message = `Loop #${params.id} is workflow-owned. Use WorkflowTransition for state changes or LoopDelete to cancel it.`;
-        return Promise.resolve(textResult(message, {
-          kind: "loop", action: "update", tone: "error", summary: `Loop #${params.id} update rejected`, expanded: [message],
         }));
       }
       if (entry.trigger.type !== "dynamic" || !entry.dynamic) {
@@ -524,31 +428,10 @@ export function registerLoopTools(options: LoopToolsOptions): void {
     }),
     async execute(_toolCallId, params) {
       const { id, action } = params;
-      const existing = getStore().get(id);
-      if (existing?.orchestration) {
-        const orchestrationAction: "pause" | "delete" = action === "pause" ? "pause" : "delete";
-        const cancelled = await cancelOrchestration?.(id, orchestrationAction);
-        if (!cancelled) {
-          const message = `Orchestration #${id} cancellation failed`;
-          return textResult(message, {
-            kind: "loop", action: orchestrationAction, tone: "error", summary: message, expanded: ["Inspect OrchestrationGet and retry."],
-          });
-        }
-        const message = orchestrationAction === "pause" ? `Orchestration #${id} cancelled and paused` : `Orchestration #${id} cancelled and deleted`;
-        return textResult(message, {
-          kind: "loop", action: orchestrationAction, tone: orchestrationAction === "pause" ? "warning" : "success", summary: message, expanded: [],
-        });
-      }
 
       if (action === "pause") {
         const entry = getStore().pause(id);
         if (!entry) {
-          const tombstone = getStore().getDeletionTombstone(id);
-          if (tombstone) {
-            return Promise.resolve(textResult(formatDeletionTombstone(id, tombstone), {
-              kind: "loop", action: "pause", tone: "warning", summary: `Loop #${id} was already removed`, expanded: [formatDeletionTombstone(id, tombstone)],
-            }));
-          }
           return Promise.resolve(textResult(`Loop #${id} not found`, {
             kind: "loop", action: "pause", tone: "error", summary: `Loop #${id} not found`, expanded: ["Use LoopList to find valid loop IDs."],
           }));
@@ -566,12 +449,6 @@ export function registerLoopTools(options: LoopToolsOptions): void {
       if (deleted) {
         return Promise.resolve(textResult(`Loop #${id} deleted`, {
           kind: "loop", action: "delete", tone: "success", summary: `Loop #${id} deleted`, expanded: [],
-        }));
-      }
-      const tombstone = getStore().getDeletionTombstone(id);
-      if (tombstone) {
-        return Promise.resolve(textResult(formatDeletionTombstone(id, tombstone), {
-          kind: "loop", action: "delete", tone: "warning", summary: `Loop #${id} was already removed`, expanded: [formatDeletionTombstone(id, tombstone)],
         }));
       }
       return Promise.resolve(textResult(`Loop #${id} not found`, {

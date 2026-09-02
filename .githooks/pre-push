@@ -1,6 +1,0 @@
-#!/usr/bin/env sh
-
-set -eu
-
-npm run lint
-npm run test:coverage

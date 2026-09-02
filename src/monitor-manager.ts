@@ -18,6 +18,7 @@ export interface MonitorManagerOptions {
 }
 
 const OUTPUT_EVENT_INTERVAL_MS = 1000;
+export const MAX_RUNNING_MONITORS = 25;
 const MAX_OUTPUT_LINE_LENGTH = 4096;
 const OUTPUT_RATE_WINDOW_MS = 60000;
 export const MONITOR_RETENTION_MS = 15 * 60 * 1000;
@@ -193,6 +194,9 @@ export class MonitorManager {
   }
 
   create(command: string, description?: string, timeout = 300000): MonitorEntry {
+    if (this.list().filter((monitor) => monitor.status === "running").length >= MAX_RUNNING_MONITORS) {
+      throw new Error(`Maximum of ${MAX_RUNNING_MONITORS} running monitors reached. Stop some before creating new ones.`);
+    }
     if (!Number.isFinite(timeout) || timeout < 0) {
       throw new Error("Monitor timeout must be a finite nonnegative number");
     }

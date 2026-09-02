@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+*.tsbuildinfo
+.pi/
+test/
+tsconfig.json
+biome.json
+.gitignore
+.github/

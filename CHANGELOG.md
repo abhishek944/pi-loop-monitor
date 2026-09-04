@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Dynamic goal loops created with `/loop <goal>` no longer default to `maxFires: 20`; they run unbounded unless a fire limit is passed explicitly (e.g. via `LoopCreate` `maxFires`).
+
 ## 0.1.0
 
 - Initial private release of `pi-loop-monitor`.

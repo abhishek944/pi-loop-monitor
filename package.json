@@ -1,7 +1,7 @@
 {
   "name": "pi-loop-monitor",
-  "version": "0.1.0",
-  "description": "Private local Pi extension for persistent loop wakes and background process monitoring.",
+  "version": "0.1.1",
+  "description": "Pi extension for persistent loop wakes\n and background process monitoring.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -66,6 +66,5 @@
     "extensions": [
       "./dist/index.js"
     ]
-  },
-  "private": true
+  }
 }

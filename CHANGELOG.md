@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Added `/monitors`, a Pi BTW-style top-centered overlay for viewing loops and background monitors while keeping the chat visible.
+- Added live details, responsive keyboard navigation, loop pause/resume/delete actions, and monitor stop actions with destructive-action confirmation.
+- Hardened monitor shutdown coordination, loop resume guards, overlay cleanup, terminal-output sanitization, and configurable keybinding hints.
+
 ## 0.1.1
 
 - Dynamic goal loops created with `/loop <goal>` no longer default to `maxFires: 20`; they run unbounded unless a fire limit is passed explicitly (e.g. via `LoopCreate` `maxFires`).

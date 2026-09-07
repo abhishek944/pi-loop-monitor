@@ -9,6 +9,7 @@ This project was adapted from [trvon/pi-loop](https://github.com/trvon/pi-loop) 
 Commands:
 
 - `/loop` — create and manage scheduled, event, hybrid, and dynamic loops
+- `/monitors` — open a BTW-style overlay for all loops and background monitors
 
 Tools:
 
@@ -31,7 +32,10 @@ MonitorCreate command="npm run build" onDone="Inspect the build result and fix f
 MonitorList
 MonitorUpdate monitorId="1" current=50 total=100 message="Halfway"
 MonitorStop monitorId="1"
+/monitors
 ```
+
+The `/monitors` dashboard uses the same top-centered overlay shape as `pi-btw`, so the main chat remains visible behind it. It refreshes live, shows bounded loop and monitor details, and supports keyboard actions: arrows or `j`/`k` to select, `Enter` to toggle details, `p` to pause or resume a loop, `s` twice to stop a monitor, `d` twice to delete a loop, and `Escape` or `Ctrl+C` to close.
 
 `MonitorCreate.timeout` is an inactivity timeout. Output, JSONL progress, or `MonitorUpdate` renews it. `onDone` creates a direct one-shot loop wake after completion; it does not require another controller subsystem.
 

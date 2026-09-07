@@ -34,6 +34,20 @@ LoopDelete id="1"
 
 `/loop` also provides an interactive create, inspect, pause, resume, and delete menu.
 
+## BTW-style monitor overlay
+
+Run `/monitors` in interactive TUI mode to inspect all loops and background monitors without adding anything to the conversation. The top-centered overlay leaves the main chat visible behind it, refreshes once per second, and does not replace the main editor.
+
+- `Up`/`Down` or `j`/`k`: select
+- `Enter` or `Space`: show or hide details
+- `p`: pause or resume the selected loop
+- `s` twice: stop the selected running monitor
+- `d` twice: delete the selected loop
+- `r`: refresh now
+- `Escape`, `Ctrl+C`, or `q`: close
+
+Commands and buffered output are sanitized and truncated to the available terminal width. Stop and delete require a second key press within four seconds.
+
 ## Background monitors
 
 ```text

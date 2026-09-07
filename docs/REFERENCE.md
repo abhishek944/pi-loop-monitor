@@ -14,6 +14,10 @@ Loop persistence uses PID locks with stale-owner detection, unique temporary sna
 
 `PI_LOOP_SCOPE` is `memory`, `session` (default), or `project`. `PI_LOOP` may override the store path or be `off`. Project scope does not elect one scheduler owner across Pi runtimes.
 
+## Interactive dashboard
+
+`/monitors` opens a top-centered, BTW-style overlay in interactive mode, leaving Pi's main chat visible behind it. It reads live snapshots through `LoopStore` and `MonitorManager`; it does not introduce another state owner. The dashboard can pause, resume, or delete loops through the store and trigger system, and can stop running monitors through the manager. Destructive stop and delete actions require confirmation. Closing the overlay returns focus to Pi's main TUI.
+
 ## Monitors
 
 Monitors run detached process groups, retain bounded output, rate-limit output events, and support trustworthy structured progress. The timeout is based on inactivity; output and progress renew it. Manual stop sends TERM and then KILL after five seconds when needed.

@@ -71,7 +71,7 @@ export class LoopStore extends ReducerBackedStore<LoopEntry, LoopReducerState, L
   resume(id: string): LoopEntry | undefined {
     return this.withLock(() => {
       const entry = this.entries.get(id);
-      if (!entry || Date.now() >= entry.expiresAt || (entry.pause?.kind === "controller_limit" && atMaxFires(entry))) return undefined;
+      if (entry?.status !== "paused" || Date.now() >= entry.expiresAt || (entry.pause?.kind === "controller_limit" && atMaxFires(entry))) return undefined;
       this.applyReducerEvent({ type: "LOOP_RESUMED", at: Date.now(), source: "tool", entityType: "loop", entityId: id, payload: { id } });
       if (entry.trigger.type === "dynamic" && entry.dynamic?.awaitingUpdate) {
         this.applyReducerEvent({ type: "LOOP_DYNAMIC_UPDATED", at: Date.now(), source: "tool", entityType: "loop", entityId: id, payload: { id, dynamic: { awaitingUpdate: false, lastUpdatedAt: Date.now() } } });

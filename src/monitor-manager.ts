@@ -32,6 +32,7 @@ export class MonitorManager {
   private platform: NodeJS.Platform;
   private taskkillSpawn: SpawnFn;
   private shutdownPromise: Promise<void> | undefined;
+  private readonly stopPromises = new Map<string, Promise<boolean>>();
   private shuttingDown = false;
 
   constructor(
@@ -359,7 +360,8 @@ export class MonitorManager {
     const processes = Array.from(this.processes.values());
     for (const bp of processes) this.clearDeadline(bp);
     const running = processes.filter((bp) => bp.entry.status === "running");
-    const shutdown = Promise.allSettled(running.map((bp) => this.stop(bp.entry.id)))
+    const stopping = Array.from(this.stopPromises.values());
+    const shutdown = Promise.allSettled([...stopping, ...running.map((bp) => this.stop(bp.entry.id))])
       .then(() => {
         for (const bp of processes) {
           if (bp.progressChangeTimer) clearTimeout(bp.progressChangeTimer);
@@ -376,7 +378,17 @@ export class MonitorManager {
     return shutdown;
   }
 
-  async stop(id: string, reason: "manual" | "timeout" = "manual"): Promise<boolean> {
+  stop(id: string, reason: "manual" | "timeout" = "manual"): Promise<boolean> {
+    const existing = this.stopPromises.get(id);
+    if (existing) return existing;
+    const tracked = Promise.resolve()
+      .then(() => this.stopProcess(id, reason))
+      .finally(() => this.stopPromises.delete(id));
+    this.stopPromises.set(id, tracked);
+    return tracked;
+  }
+
+  private async stopProcess(id: string, reason: "manual" | "timeout"): Promise<boolean> {
     const bp = this.processes.get(id);
     if (!bp || bp.entry.status !== "running") return false;
 

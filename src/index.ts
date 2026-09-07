@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerLoopCommand } from "./commands/loop-command.js";
+import { registerMonitorsCommand } from "./commands/monitors-command.js";
 import { atMaxFires } from "./loop-reducer.js";
 import { MonitorManager } from "./monitor-manager.js";
 import { buildLoopExpiredPayload } from "./runtime/loop-events.js";
@@ -50,6 +51,8 @@ export default function (pi: ExtensionAPI) {
   let triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin));
   const notificationRuntime = createNotificationRuntime({ pi, getHasPendingMessages: () => latestCtx?.hasPendingMessages() ?? false, debug });
   const monitorOnDoneRuntime = createMonitorOnDoneRuntime({ monitorManager, getLoop: (id) => store.get(id), deleteLoop: (id) => { store.delete(id); }, onLoopFire, isContextCurrent: isCurrentExtensionContext, debug });
+
+  registerMonitorsCommand({ pi, getStore: () => store, getMonitorManager: () => monitorManager, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire });
 
   function emitLoopFire(entry: LoopEntry, monitor?: MonitorEntry) {
     pi.events.emit("loop:fire", { loopId: entry.id, prompt: entry.prompt, trigger: entry.trigger, timestamp: Date.now(), readOnly: entry.readOnly, recurring: entry.recurring, persistent: entry.recurring, dynamic: entry.dynamic, fireLimitReached: atMaxFires(entry), sessionGeneration, monitorOutcome: monitor ? { monitorId: monitor.id, status: monitor.status, exitCode: monitor.exitCode, stopReason: monitor.stopReason, outputLines: monitor.outputLines } : undefined });

@@ -25,12 +25,9 @@ function debug(...args: unknown[]) { if (DEBUG) console.error("[pi-loop-monitor]
 export default function (pi: ExtensionAPI) {
   const runtimeId = randomUUID();
   const runtimeProbeEvent = `pi-loop-monitor:runtime-probe:${runtimeId}`;
-  const piLoopEnv = process.env.PI_LOOP;
-  let loopScope = (process.env.PI_LOOP_SCOPE as "memory" | "session" | "project" | undefined) ?? "session";
   let sessionGeneration = 0;
   let latestCtx: ExtensionContext | undefined;
-  let store = new LoopStore(resolveLoopStorePath({ piLoopEnv, loopScope }));
-  const memoryStores = new Map<string, LoopStore>();
+  let store = new LoopStore(resolveLoopStorePath());
   const monitorManager = new MonitorManager(pi);
   const widget = new LoopWidget(store, monitorManager);
   monitorManager.setOnChange(() => widget.update());
@@ -72,9 +69,9 @@ export default function (pi: ExtensionAPI) {
   }
 
   registerSessionRuntimeHooks({
-    pi, getLoopScope: () => loopScope, getPiLoopEnv: () => piLoopEnv, getSessionGeneration: () => sessionGeneration, advanceSessionGeneration: () => ++sessionGeneration,
-    recreateSessionStore: (sessionId) => { const path = resolveLoopStorePath({ piLoopEnv, loopScope }, sessionId); store = path ? new LoopStore(path) : memoryStores.get(sessionId) ?? new LoopStore(); if (!path) memoryStores.set(sessionId, store); widget.setStore(store); scheduler = createScheduler(store); triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin)); },
-    clearAllLoops: () => { store.clearAll(); }, getStore: () => store, getScheduler: () => scheduler, getTriggerSystem: () => triggerSystem,
+    pi, getSessionGeneration: () => sessionGeneration, advanceSessionGeneration: () => ++sessionGeneration,
+    recreateSessionStore: (sessionId) => { store = new LoopStore(resolveLoopStorePath(sessionId)); widget.setStore(store); scheduler = createScheduler(store); triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin)); },
+    getStore: () => store, getScheduler: () => scheduler, getTriggerSystem: () => triggerSystem,
     setLatestCtx: (ctx) => { latestCtx = ctx; }, setSessionId: () => {}, widget, notificationRuntime,
     flushPendingNotifications: notificationRuntime.flushPendingNotifications, shutdownMonitors: () => monitorManager.shutdown(), isContextCurrent: isCurrentExtensionContext,
     emitLoopExpired: (entry, disposition, reason, generation) => emitExpired(entry, disposition, "session_recovery", reason, generation),

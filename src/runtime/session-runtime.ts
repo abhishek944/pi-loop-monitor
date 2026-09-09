@@ -2,18 +2,13 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { LoopStore } from "../store.js";
 import type { LoopEntry, LoopExpiryDisposition, LoopExpiryReason } from "../types.js";
 import type { NotificationRuntime } from "./notification-runtime.js";
-import type { LoopScope } from "./scope.js";
 
-export interface SessionSwitchEvent { reason?: string }
 const HEARTBEAT_MS = 30_000;
 export interface SessionRuntimeOptions {
   pi: ExtensionAPI;
-  getLoopScope: () => LoopScope;
-  getPiLoopEnv: () => string | undefined;
   getSessionGeneration: () => number;
   advanceSessionGeneration: () => number;
   recreateSessionStore: (sessionId: string) => void;
-  clearAllLoops: () => void;
   getStore: () => LoopStore;
   getScheduler: () => { pump(now: number): void };
   getTriggerSystem: () => { start(): void; stop(): void };
@@ -28,7 +23,7 @@ export interface SessionRuntimeOptions {
 }
 
 export function registerSessionRuntimeHooks(options: SessionRuntimeOptions): void {
-  const { pi, getLoopScope, getPiLoopEnv, getSessionGeneration, advanceSessionGeneration, recreateSessionStore, clearAllLoops, getStore, getScheduler, getTriggerSystem, setLatestCtx, setSessionId, widget, notificationRuntime, flushPendingNotifications, shutdownMonitors, isContextCurrent, emitLoopExpired } = options;
+  const { pi, getSessionGeneration, advanceSessionGeneration, recreateSessionStore, getStore, getScheduler, getTriggerSystem, setLatestCtx, setSessionId, widget, notificationRuntime, flushPendingNotifications, shutdownMonitors, isContextCurrent, emitLoopExpired } = options;
   let storeUpgraded = false;
   let persistedShown = false;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -48,7 +43,7 @@ export function registerSessionRuntimeHooks(options: SessionRuntimeOptions): voi
     heartbeatTimer.unref?.();
   }
   function stopHeartbeat() { if (heartbeatTimer) clearInterval(heartbeatTimer); heartbeatTimer = undefined; }
-  function upgrade(ctx: ExtensionContext) { if (!storeUpgraded && (getLoopScope() === "session" || getLoopScope() === "memory") && !getPiLoopEnv()) recreateSessionStore(ctx.sessionManager.getSessionId()); storeUpgraded = true; }
+  function upgrade(ctx: ExtensionContext) { if (!storeUpgraded) recreateSessionStore(ctx.sessionManager.getSessionId()); storeUpgraded = true; }
   async function showPersisted(generation = getSessionGeneration()) {
     if (!current(generation) || persistedShown || !isContextCurrent()) return;
     persistedShown = true;
@@ -66,11 +61,10 @@ export function registerSessionRuntimeHooks(options: SessionRuntimeOptions): voi
   pi.on("agent_start", async (_event, ctx) => { notificationRuntime.syncRuntimeState({ agentRunning: true, hasPendingMessages: ctx.hasPendingMessages() }); setLatestCtx(ctx); widget.setUICtx(ctx.ui); });
   pi.on("agent_end", async (_event, ctx) => { const generation = getSessionGeneration(); setLatestCtx(ctx); widget.setUICtx(ctx.ui); notificationRuntime.syncRuntimeState({ agentRunning: false, hasPendingMessages: ctx.hasPendingMessages() }); await flushPendingNotifications({ ignorePendingMessages: true }); if (current(generation)) getScheduler().pump(Date.now()); });
   pi.on("session_shutdown", async () => { advanceSessionGeneration(); getTriggerSystem().stop(); stopHeartbeat(); notificationRuntime.clear("session_shutdown"); setSessionId(undefined); storeUpgraded = false; persistedShown = false; await shutdownMonitors(); });
-  pi.on("session_switch" as never, async (event: SessionSwitchEvent, ctx: ExtensionContext) => {
+  pi.on("session_switch" as never, async (_event: unknown, ctx: ExtensionContext) => {
     const generation = advanceSessionGeneration(); getTriggerSystem().stop(); stopHeartbeat(); notificationRuntime.clear("session_switch"); setSessionId(undefined); storeUpgraded = false; persistedShown = false; await shutdownMonitors();
     if (!current(generation)) return;
     setLatestCtx(ctx); widget.setUICtx(ctx.ui); setSessionId(ctx.sessionManager.getSessionId()); upgrade(ctx);
-    if (event?.reason !== "resume" && getLoopScope() === "memory") clearAllLoops();
     await showPersisted(generation); if (current(generation)) widget.update();
   });
 }

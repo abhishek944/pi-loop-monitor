@@ -63,8 +63,6 @@ Monitor output is untrusted and only its bounded tail is displayed. Session shut
 
 ## Configuration
 
-- `PI_LOOP_SCOPE`: `memory`, `session`, or `project`; default `session`
-- `PI_LOOP`: path override or `off`
 - `PI_LOOP_DEBUG`: enables debug logging
 
-Session loop files live under `.pi/loops/`. Monitor state is process-local.
+Loops are always scoped to one Pi session. Their state is persisted under `~/.pi/loops/` as `loops-<session-id>.json` and is never shared between sessions. Monitor state remains process-local.

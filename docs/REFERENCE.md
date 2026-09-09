@@ -2,7 +2,7 @@
 
 ## Ownership
 
-`LoopStore` exclusively owns persisted loop state under `.pi/loops/`. `MonitorManager` owns process-local monitor state. Notification buffers are memory-only. This package has no task store, task or subagent RPC, workflow state, orchestration state, or controller-routing runtime.
+`LoopStore` exclusively owns persisted loop state under `~/.pi/loops/`. `MonitorManager` owns process-local monitor state. Notification buffers are memory-only. This package has no task store, task or subagent RPC, workflow state, orchestration state, or controller-routing runtime.
 
 ## Loops
 
@@ -12,7 +12,7 @@ Dynamic loops preserve goal, state, metrics, done criteria, iteration, and optio
 
 Loop persistence uses PID locks with stale-owner detection, unique temporary snapshots, file and directory fsync, atomic rename, and previous-snapshot recovery. Corruption fails visibly when no valid snapshot remains.
 
-`PI_LOOP_SCOPE` is `memory`, `session` (default), or `project`. `PI_LOOP` may override the store path or be `off`. Project scope does not elect one scheduler owner across Pi runtimes.
+Loops are always session-scoped and persisted as `~/.pi/loops/loops-<session-id>.json`; they are never shared between Pi sessions. There is no memory-only or shared-file mode.
 
 ## Interactive dashboard
 

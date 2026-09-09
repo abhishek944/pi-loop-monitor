@@ -1,8 +1,8 @@
 # pi-loop-monitor
 
-A private Pi extension that provides only persistent agent wake loops and background command monitors.
+A Pi extension that provides persistent agent wake loops and background command monitors.
 
-This project was adapted from [trvon/pi-loop](https://github.com/trvon/pi-loop) and reduced to the loop and monitor features. It is intentionally not published to npm and does not include workflows, task queues, task RPC, subagent orchestration, or controller routing.
+This project was adapted from [trvon/pi-loop](https://github.com/trvon/pi-loop) and reduced to the loop and monitor features. It does not include workflows, task queues, task RPC, subagent orchestration, or controller routing.
 
 ## Surface
 
@@ -40,6 +40,8 @@ The `/monitors` dashboard uses the same top-centered overlay shape as `pi-btw`, 
 `MonitorCreate.timeout` is an inactivity timeout. Output, JSONL progress, or `MonitorUpdate` renews it. `onDone` creates a direct one-shot loop wake after completion; it does not require another controller subsystem.
 
 Recurring loops expire after seven days. Event and hybrid subscriptions from an earlier session are retired during recovery. Dynamic loops must call `LoopUpdate` once per wake.
+
+Loop state is always scoped to one Pi session and persisted under `~/.pi/loops/` as `loops-<session-id>.json`. Loops are never shared between sessions.
 
 ## Development
 

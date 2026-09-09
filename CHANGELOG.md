@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-09-09
+
+- Store loop state centrally under `~/.pi/loops/` instead of repository-local `.pi/loops/`.
+- Make loops strictly session-scoped, remove project and memory-only scopes, and remove custom shared store paths.
+
 ## 0.2.0
 
 - Added `/monitors`, a Pi BTW-style top-centered overlay for viewing loops and background monitors while keeping the chat visible.

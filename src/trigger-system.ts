@@ -128,11 +128,15 @@ export class TriggerSystem {
     }
 
     if (fresh.recurring && atMaxFires(fresh)) {
-      this.retire(fresh);
+      if (fresh.readOnly) this.remove(fresh.id);
+      else this.retire(fresh);
       return;
     }
 
-    if (!fresh.recurring) this.retire(fresh);
+    if (!fresh.recurring) {
+      if (fresh.readOnly) this.remove(fresh.id);
+      else this.retire(fresh);
+    }
   }
 
   private matchesFilter(data: unknown, filter?: string): boolean {

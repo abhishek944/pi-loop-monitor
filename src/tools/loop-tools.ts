@@ -54,6 +54,7 @@ export interface LoopToolsOptions {
   getScheduler: () => SchedulerLike;
   getMonitorManager: () => MonitorManagerLike;
   updateWidget: () => void;
+  isReadOnlyGuardAvailable: () => boolean;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
 }
 
@@ -201,6 +202,7 @@ export function registerLoopTools(options: LoopToolsOptions): void {
     getScheduler,
     getMonitorManager,
     updateWidget,
+    isReadOnlyGuardAvailable,
     onDynamicLoopActivated,
   } = options;
 
@@ -225,6 +227,17 @@ export function registerLoopTools(options: LoopToolsOptions): void {
     }),
     async execute(_toolCallId, params) {
       const { trigger: triggerInput, prompt, recurring, triggerType, debounceMs, readOnly, maxFires } = params;
+
+      if (readOnly && !isReadOnlyGuardAvailable()) {
+        const message = "Read-only loops require the pi-ask extension (guard protocol version 1) to be installed and loaded.";
+        return Promise.resolve(textResult(message, {
+          kind: "loop",
+          action: "create",
+          tone: "error",
+          summary: "Read-only loop was not created",
+          expanded: [message],
+        }));
+      }
 
       let trigger: Trigger;
       const inferred = triggerType ?? inferTriggerType(triggerInput);

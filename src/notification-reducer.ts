@@ -12,6 +12,7 @@ export interface ReducerNotification {
   persistent?: boolean;
   readOnly?: boolean;
   dynamic?: DynamicLoopState;
+  fireLimitReached?: boolean;
   sessionGeneration?: number;
 }
 

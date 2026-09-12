@@ -2,13 +2,15 @@
 
 ## Ownership
 
-`LoopStore` exclusively owns persisted loop state under `~/.pi/loops/`. `MonitorManager` owns process-local monitor state. Notification buffers are memory-only. This package has no task store, task or subagent RPC, workflow state, orchestration state, or controller-routing runtime.
+`LoopStore` exclusively owns persisted loop state under `~/.pi/loops/`. `MonitorManager` owns process-local monitor state. Notification buffers are memory-only; when a session shuts down, discarded one-shot and final bounded read-only notifications retire their controllers instead of leaving already-fired state to run again. This package has no task store, task or subagent RPC, workflow state, orchestration state, or controller-routing runtime.
 
 ## Loops
 
 Triggers are cron, event, hybrid, or dynamic. Loops can be active or paused and may have an administrative or controller-limit pause record. Recurring controllers expire after seven days. Event and hybrid subscriptions created in an older session are retired on recovery. Retirement emits `loops:expired` and queues a hidden idle-safe notification.
 
 Dynamic loops preserve goal, state, metrics, done criteria, iteration, and optional next wake time. Each dynamic wake sets `awaitingUpdate`; `LoopUpdate` clears it or completes/pauses the controller with a compare-and-set guard.
+
+Read-only wakes acquire guard protocol version 1 from the separately loaded `@abhishek944/pi-ask` extension before notification delivery. The guard narrows active tools and enforces the same rules again at `tool_call`. Approved tools are repository reads, bounded web lookups, `LoopList`, and `MonitorList`; dynamic wakes additionally receive `LoopUpdate` constrained to the firing loop ID. Guard acquisition is acknowledged synchronously. A busy guard leaves the wake queued until the active restricted run settles. A missing or invalid guard fails closed: creation is rejected when possible, and recovered loops are paused rather than delivered unrestricted. Pi Ask owns restoration on `agent_settled` and session shutdown.
 
 Loop persistence uses PID locks with stale-owner detection, unique temporary snapshots, file and directory fsync, atomic rename, and previous-snapshot recovery. Corruption fails visibly when no valid snapshot remains.
 

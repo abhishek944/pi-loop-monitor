@@ -24,6 +24,14 @@ LoopUpdate id="1" status="completed"
 
 Call `LoopUpdate` exactly once after every dynamic wake. Use `continue` while any work remains, `paused` only for a real blocker, and `completed` only when the goal is done.
 
+## Read-only loops
+
+Set `readOnly: true` on `LoopCreate` for observation work that must not change the project. Read-only wakes require `@abhishek944/pi-ask` 0.2.0 or newer to be installed and loaded. Pi Ask's shared guard keeps only approved read and listing tools active, blocks every other tool call immediately before execution, and restores the previous tools after the complete agent run settles.
+
+A dynamic read-only wake may call `LoopUpdate` only with its own loop ID. It cannot update another loop. Image generation, shell commands, file changes, monitor mutation, and unknown extension tools are unavailable. This is a Pi tool guard, not an operating-system sandbox.
+
+Creation fails if the guard is unavailable. If a persisted read-only loop later fires without an available guard, the wake is not delivered and the loop is paused.
+
 ## Managing loops
 
 ```text

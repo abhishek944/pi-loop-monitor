@@ -1,6 +1,6 @@
 {
   "name": "pi-loop-monitor",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Pi extension for persistent loop wakes\n and background process monitoring.",
   "license": "MIT",
   "type": "module",
@@ -37,9 +37,15 @@
     "./package.json": "./package.json"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
+    "@abhishek944/pi-ask": ">=0.2.0",
+    "@earendil-works/pi-coding-agent": ">=0.84.3",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@abhishek944/pi-ask": {
+      "optional": true
+    }
   },
   "overrides": {
     "postcss": "^8.5.18"
@@ -56,8 +62,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",
-    "@earendil-works/pi-coding-agent": "0.84.2",
-    "@earendil-works/pi-tui": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.84.3",
+    "@earendil-works/pi-tui": "0.84.3",
     "@types/node": "^26.1.2",
     "typebox": "1.3.16",
     "typescript": "^7.0.2"

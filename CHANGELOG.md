@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 - 2026-09-12
+
+- Enforce `readOnly` loop wakes through the reusable Pi Ask guard instead of relying only on prompt instructions.
+- Restrict dynamic read-only wakes to `LoopUpdate` calls for the firing loop and fail closed when the guard is unavailable.
+
 ## 0.2.1 - 2026-09-09
 
 - Store loop state centrally under `~/.pi/loops/` instead of repository-local `.pi/loops/`.

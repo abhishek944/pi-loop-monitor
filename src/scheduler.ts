@@ -158,12 +158,14 @@ export class CronScheduler {
       }
 
       if (!fresh.recurring) {
-        this.retire(fresh);
+        if (fresh.readOnly) this.fireTimes.delete(id);
+        else this.retire(fresh);
         continue;
       }
 
       if (fresh.maxFires && (fresh.fireCount ?? 0) >= fresh.maxFires) {
-        this.retire(fresh);
+        if (fresh.readOnly) this.fireTimes.delete(id);
+        else this.retire(fresh);
         continue;
       }
 

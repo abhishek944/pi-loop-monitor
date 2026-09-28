@@ -62,7 +62,7 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
 
   pi.registerTool({ name: "MonitorCreate", label: "MonitorCreate",
   renderCall: renderToolCall("Monitor", (args) => `start · ${String(toolArg(args, "description") ?? toolArg(args, "command") ?? "background command").slice(0, 56)}`),
-  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}}; otherwise use MonitorUpdate.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout."], parameters: Type.Object({
+  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}} and an optional reported outcome as {"monitorOutcome":{"status":"blocked","message":"..."}}. The command's reported outcome is separate from its process status.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout."], parameters: Type.Object({
     command: Type.String({ description: "Shell command to run in background" }),
     description: Type.Optional(Type.String({ description: "Human-readable description" })),
     timeout: Type.Optional(Type.Number({ description: "Stop after N ms without output or progress (default: 300000, 0 = disabled)", default: 300000, minimum: 0 })),
@@ -151,6 +151,7 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
         let line = `${icon} #${m.id} [${m.status}] ${m.command.slice(0, 60)} — ${m.outputLines} lines (${ageStr})`;
         if (m.exitCode !== undefined) line += ` exit=${m.exitCode}`;
         if (m.stopReason) line += ` reason=${m.stopReason}`;
+        if (m.reportedOutcome) line += ` · reported=${m.reportedOutcome.status}${m.reportedOutcome.message ? ` (${m.reportedOutcome.message.replace(/[\r\n\t]/g, " ").slice(0, 100)})` : ""}`;
         if (m.progress) line += ` · ${formatProgress(m.progress)}`;
         const activity = m.status === "running" ? formatActivity(m) : undefined;
         if (activity) line += ` · ${activity}`;

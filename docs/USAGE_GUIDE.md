@@ -67,6 +67,10 @@ MonitorStop monitorId="1"
 
 The timeout measures inactivity, not total runtime. Output, JSONL `{"progress":{...}}`, and `MonitorUpdate` renew it. `onDone` directly creates a one-shot completion wake. Without `onDone`, a timed monitor still wakes the agent if it becomes inactive and is stopped.
 
+A command may print one JSONL record to report its own outcome: `{"monitorOutcome":{"status":"blocked","message":"Waiting for approval"}}`. The last valid record is retained. `status` is a short label (letters, digits, `_` or `-`, starting with a letter); `message` is optional, up to 1000 characters. The monitor still reports its **process** status (`completed` for exit 0, `error` for nonzero, or `stopped`) and exit code separately. `MonitorList`, completion events, and the `onDone` wake include the command-reported outcome when present; it is untrusted command output, not a monitor-verified result. Ordinary commands need not emit anything.
+
+For example, a monitored shell command can report `blocked` with `printf '%s\n' '{"monitorOutcome":{"status":"blocked","message":"Waiting for approval"}}'`. For Herdr, wrap the invocation so it prints that JSONL record using the status returned by `herdr agent prompt --wait` (such as `blocked` or `done`). Merely running the Herdr CLI does not automatically convert its response into this record. Preserve the Herdr command's exit code in the wrapper when it fails.
+
 Monitor output is untrusted and only its bounded tail is displayed. Session shutdown and switching stop and reap running processes before rebinding loop state.
 
 ## Configuration

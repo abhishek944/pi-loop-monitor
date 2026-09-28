@@ -46,6 +46,11 @@ export interface LoopEntry {
 
 export interface LoopStoreData { nextId: number; loops: LoopEntry[] }
 
+export interface CommandReportedOutcome {
+  status: string;
+  message?: string;
+}
+
 export interface MonitorEntry {
   id: string;
   command: string;
@@ -56,6 +61,7 @@ export interface MonitorEntry {
   completedAt?: number;
   exitCode?: number;
   stopReason?: "manual" | "timeout";
+  reportedOutcome?: CommandReportedOutcome;
   outputLines: number;
   outputBuffer: string[];
   lastActivityAt?: number;
@@ -69,6 +75,7 @@ export interface MonitorOutcome {
   status: MonitorEntry["status"];
   exitCode?: number;
   stopReason?: MonitorEntry["stopReason"];
+  reportedOutcome?: CommandReportedOutcome;
   outputLines: number;
 }
 

@@ -8,7 +8,7 @@ import {
   reduceMonitorState,
 } from "./monitor-reducer.js";
 import { isStaleExtensionContextError } from "./runtime/stale-context.js";
-import type { MonitorEntry, MonitorProcess, MonitorProgress } from "./types.js";
+import type { CommandReportedOutcome, MonitorEntry, MonitorProcess, MonitorProgress } from "./types.js";
 
 export type SpawnFn = (command: string, args: string[], options: SpawnOptions) => ChildProcess;
 
@@ -271,11 +271,13 @@ export class MonitorManager {
         status: current.status,
         exitCode: current.exitCode,
         outputLines: current.outputLines,
+        reportedOutcome: current.reportedOutcome,
       });
       this.emit(status === "completed" ? "monitor:done" : "monitor:error", {
         monitorId: id,
         exitCode: code,
         outputLines: current.outputLines,
+        reportedOutcome: current.reportedOutcome,
       });
       for (const callback of bp.completionCallbacks) callback(current);
       bp.completionCallbacks = [];
@@ -315,10 +317,12 @@ export class MonitorManager {
           status: current.status,
           error: err.message,
           outputLines: current.outputLines,
+          reportedOutcome: current.reportedOutcome,
         });
         this.emit("monitor:error", {
           monitorId: id,
           error: err.message,
+          reportedOutcome: current.reportedOutcome,
         });
         for (const callback of bp.completionCallbacks) callback(current);
         bp.completionCallbacks = [];
@@ -410,6 +414,7 @@ export class MonitorManager {
       status: "stopped",
       reason,
       outputLines: bp.entry.outputLines,
+      reportedOutcome: bp.entry.reportedOutcome,
     });
     if (!this.shuttingDown) this.schedulePrune(id);
     this.signalProcessTree(bp, "SIGTERM");
@@ -419,6 +424,7 @@ export class MonitorManager {
         monitorId: id,
         error: `No monitor activity for ${bp.entry.timeout}ms`,
         outputLines: bp.entry.outputLines,
+        reportedOutcome: bp.entry.reportedOutcome,
       });
       for (const callback of bp.completionCallbacks) callback(bp.entry);
       bp.completionCallbacks = [];
@@ -534,6 +540,11 @@ export class MonitorManager {
     for (const line of lines) {
       const progress = parseJsonlProgress(line);
       if (progress) this.applyProgress(id, { ...progress, source: "jsonl" });
+      const outcome = parseJsonlOutcome(line);
+      if (outcome) this.applyReducerEvent({
+        type: "MONITOR_OUTCOME_REPORTED", at: Date.now(), source: "monitor",
+        entityType: "monitor", entityId: id, payload: { id, outcome },
+      });
     }
     if (Date.now() - bp.lastOutputEventAt >= OUTPUT_EVENT_INTERVAL_MS) {
       this.emitOutputProgress(id, bp);
@@ -590,6 +601,21 @@ export class MonitorManager {
       this.notifyChange();
     }, delay);
     bp.progressChangeTimer.unref?.();
+  }
+}
+
+function parseJsonlOutcome(line: string): CommandReportedOutcome | undefined {
+  try {
+    const value: unknown = JSON.parse(line);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const outcome = (value as { monitorOutcome?: unknown }).monitorOutcome;
+    if (!outcome || typeof outcome !== "object" || Array.isArray(outcome)) return undefined;
+    const { status, message } = outcome as Record<string, unknown>;
+    if (typeof status !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/i.test(status)) return undefined;
+    if (message !== undefined && (typeof message !== "string" || message.length > 1000)) return undefined;
+    return { status, ...(message === undefined ? {} : { message }) };
+  } catch {
+    return undefined;
   }
 }
 

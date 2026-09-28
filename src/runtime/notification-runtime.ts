@@ -120,7 +120,7 @@ export function createNotificationRuntime({ pi, getHasPendingMessages, getIsIdle
     syncRuntimeState({ agentRunning: true });
     try {
       if (!notification.readOnly) pi.events.emit(PI_ASK_GUARD_RUN_START_EVENT, { source: "pi-loop-monitor", key: notification.key });
-      pi.sendMessage({ customType: "pi-loop-monitor", content: notification.message, display: false, details: { loopId: notification.loopId, trigger: notification.trigger, recurring: notification.recurring, persistent: notification.persistent, readOnly: notification.readOnly, dynamic: notification.dynamic, timestamp: notification.timestamp } }, { deliverAs: "steer", triggerTurn: true });
+      pi.sendMessage({ customType: "pi-loop-monitor", content: notification.message, display: false, details: { loopId: notification.loopId, trigger: notification.trigger, recurring: notification.recurring, persistent: notification.persistent, readOnly: notification.readOnly, dynamic: notification.dynamic, monitorOutcome: notification.monitorOutcome, timestamp: notification.timestamp } }, { deliverAs: "steer", triggerTurn: true });
     } catch (error) {
       if (guardOwnerId && guardAcquisitionToken) releaseReadOnlyWakeGuard(pi, guardOwnerId, guardAcquisitionToken);
       throw error;

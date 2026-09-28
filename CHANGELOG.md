@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 - 2026-09-28
+
+- Pass an optional command-reported JSONL outcome separately from the monitor's process status and exit code.
+- Show reported outcomes in monitor listings and dashboard, completion events, and `onDone` wakes.
+
 ## 0.2.2 - 2026-09-12
 
 - Enforce `readOnly` loop wakes through the reusable Pi Ask guard instead of relying only on prompt instructions.

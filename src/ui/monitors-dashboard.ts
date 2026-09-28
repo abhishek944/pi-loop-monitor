@@ -298,6 +298,7 @@ export class MonitorsDashboard implements Component, Focusable {
     const label = safeSingleLine(monitor.description ?? monitor.command) || "background command";
     const details = [
       formatProgress(monitor),
+      monitor.reportedOutcome ? `reported ${safeSingleLine(monitor.reportedOutcome.status)}` : "",
       `${monitor.outputLines} lines`,
       formatDuration((monitor.completedAt ?? Date.now()) - monitor.startedAt),
     ].filter(Boolean).join(" · ");
@@ -539,6 +540,7 @@ function monitorDetails(monitor: MonitorEntry): string[] {
     `Command: ${safeSingleLine(monitor.command)}`,
     `Elapsed: ${formatDuration(completedAt - monitor.startedAt)} · Last activity: ${formatDuration(Date.now() - activityAt)} ago · ${monitor.outputLines} lines`,
     ...(progress ? [`Progress: ${progress}`] : []),
+    ...(monitor.reportedOutcome ? [`Reported: ${safeSingleLine(monitor.reportedOutcome.status)}${monitor.reportedOutcome.message ? ` · ${safeSingleLine(monitor.reportedOutcome.message)}` : ""}`] : []),
     ...output,
   ];
 }

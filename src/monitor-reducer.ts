@@ -1,4 +1,4 @@
-import type { MonitorEntry, MonitorProgress } from "./types.js";
+import type { CommandReportedOutcome, MonitorEntry, MonitorProgress } from "./types.js";
 
 type ReducerSource = "tool" | "command" | "scheduler" | "eventbus" | "monitor" | "session" | "coordinator" | "system";
 
@@ -47,6 +47,14 @@ export type MonitorReducerEvent =
       exitCode?: number;
       error?: string;
     };
+  }
+  | {
+    type: "MONITOR_OUTCOME_REPORTED";
+    at: number;
+    source: ReducerSource;
+    entityType?: "monitor";
+    entityId?: string;
+    payload: { id: string; outcome: CommandReportedOutcome };
   }
   | {
     type: "MONITOR_PROGRESS_UPDATED";
@@ -149,6 +157,10 @@ export function reduceMonitorState(state: MonitorReducerState, event: MonitorRed
     monitor.outputBuffer = [...monitor.outputBuffer, ...event.payload.lines].slice(-200);
     monitor.lastOutputAt = event.at;
     monitor.outputRatePerMinute = event.payload.ratePerMinute;
+  }
+
+  if (event.type === "MONITOR_OUTCOME_REPORTED") {
+    monitor.reportedOutcome = event.payload.outcome;
   }
 
   if (event.type === "MONITOR_PROGRESS_UPDATED") {

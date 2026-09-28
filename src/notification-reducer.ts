@@ -1,4 +1,4 @@
-import type { DynamicLoopState } from "./types.js";
+import type { DynamicLoopState, MonitorOutcome } from "./types.js";
 
 type ReducerSource = "tool" | "command" | "scheduler" | "eventbus" | "monitor" | "session" | "coordinator" | "system";
 
@@ -12,6 +12,7 @@ export interface ReducerNotification {
   persistent?: boolean;
   readOnly?: boolean;
   dynamic?: DynamicLoopState;
+  monitorOutcome?: MonitorOutcome;
   fireLimitReached?: boolean;
   sessionGeneration?: number;
 }

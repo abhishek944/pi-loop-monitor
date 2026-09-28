@@ -110,7 +110,7 @@ export default function (pi: ExtensionAPI) {
   registerMonitorsCommand({ pi, getStore: () => store, getMonitorManager: () => monitorManager, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire });
 
   function emitLoopFire(entry: LoopEntry, monitor?: MonitorEntry) {
-    const event: LoopFireEvent = { loopId: entry.id, prompt: entry.prompt, trigger: entry.trigger, timestamp: Date.now(), readOnly: entry.readOnly, recurring: entry.recurring, persistent: entry.recurring, dynamic: entry.dynamic, fireLimitReached: atMaxFires(entry), sessionGeneration, monitorOutcome: monitor ? { monitorId: monitor.id, status: monitor.status, exitCode: monitor.exitCode, stopReason: monitor.stopReason, outputLines: monitor.outputLines } : undefined };
+    const event: LoopFireEvent = { loopId: entry.id, prompt: entry.prompt, trigger: entry.trigger, timestamp: Date.now(), readOnly: entry.readOnly, recurring: entry.recurring, persistent: entry.recurring, dynamic: entry.dynamic, fireLimitReached: atMaxFires(entry), sessionGeneration, monitorOutcome: monitor ? { monitorId: monitor.id, status: monitor.status, exitCode: monitor.exitCode, stopReason: monitor.stopReason, reportedOutcome: monitor.reportedOutcome, outputLines: monitor.outputLines } : undefined };
     void notificationRuntime.queueOrDeliverNotification(event)
       .catch((error) => debug("loop notification delivery failed", entry.id, error));
     pi.events.emit("loop:fire", structuredClone(event));

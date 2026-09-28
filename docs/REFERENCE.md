@@ -22,7 +22,7 @@ Loops are always session-scoped and persisted as `~/.pi/loops/loops-<session-id>
 
 ## Monitors
 
-Monitors run detached process groups, retain bounded output, rate-limit output events, and support trustworthy structured progress. The timeout is based on inactivity; output and progress renew it. Manual stop sends TERM and then KILL after five seconds when needed.
+Monitors run detached process groups, retain bounded output, rate-limit output events, and support trustworthy structured progress. The timeout is based on inactivity; output and progress renew it. Manual stop sends TERM and then KILL after five seconds when needed. Commands can optionally emit JSONL `{"monitorOutcome":{"status":"blocked","message":"..."}}`; the last valid command-reported outcome is stored separately from the monitor's process status and exit code. This report is untrusted and is passed to `MonitorList`, completion events, and the `onDone` wake. Commands without a report remain unchanged.
 
 `onDone` creates an ordinary one-shot event loop and registers a direct monitor callback. The callback checks the current extension generation before firing and deletes the completion loop after delivery. A monitor without `onDone` gets a timeout-only alert loop when its inactivity timeout is enabled. Monitor processes are stopped and reaped before session replacement; monitor recovery across Pi process death is not supported.
 

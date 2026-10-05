@@ -6,7 +6,7 @@ This project was adapted from [trvon/pi-loop](https://github.com/trvon/pi-loop) 
 
 ## Installation
 
-Read-only wakes require the Pi Ask guard. Install `@abhishek944/pi-ask@0.2.0` or newer first. To use this checkout before its npm release, run `npm run build` and `pi install /absolute/path/to/pi-loop-monitor` (personal scope), then run `/reload` in Pi. Once published to npm, install `pi-loop-monitor@0.2.4` instead.
+Read-only wakes require the Pi Ask guard. Install `@abhishek944/pi-ask@0.2.0` or newer first. To use this checkout before its npm release, run `npm run build` and `pi install /absolute/path/to/pi-loop-monitor` (personal scope), then run `/reload` in Pi. Once published to npm, install `pi-loop-monitor@0.2.5` instead.
 
 ## Surface
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5 - 2026-10-05
+
+- Upgrade Pi development dependencies to 1.0.2 to resolve vulnerable shrinkwrapped `brace-expansion` and `undici` copies.
+- Keep runtime peer requirements and the full prepublish audit gate unchanged.
+
 ## 0.2.4 - 2026-10-05
 
 - Keep one monitor subscribed to all Herdr worker state changes with `herdrPaneId` and `onSignal`.

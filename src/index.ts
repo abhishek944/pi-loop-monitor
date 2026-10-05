@@ -157,6 +157,30 @@ export default function (pi: ExtensionAPI) {
   pi.events.on("monitor:finished", (event: unknown) => { const id = (event as { monitorId?: string }).monitorId; if (id) notificationRuntime.discardMonitorStarted(id); });
 
   registerLoopTools({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, getScheduler: () => scheduler, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(), isReadOnlyGuardAvailable: () => isReadOnlyWakeGuardAvailable(pi), onDynamicLoopActivated: onLoopFire });
-  registerMonitorTools({ pi, getStore: () => store, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(), handleMonitorDoneLoop: (doneLoop, monitorId) => monitorOnDoneRuntime.register(doneLoop, monitorId) });
+  registerMonitorTools({
+    pi, getStore: () => store, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(),
+    handleMonitorDoneLoop: (doneLoop, monitorId) => monitorOnDoneRuntime.register(doneLoop, monitorId),
+    handleMonitorSignalLoop: (signalLoop, monitorId) => {
+      const generation = sessionGeneration;
+      const unsubscribe = pi.events.on("monitor:signal", (event: unknown) => {
+        const data = event as { monitorId?: string; outcome?: unknown };
+        if (data.monitorId !== monitorId || generation !== sessionGeneration || !isCurrentExtensionContext()) return;
+        const current = store.get(signalLoop.id);
+        const monitor = monitorManager.get(monitorId);
+        if (current?.status !== "active" || monitor?.status !== "running") return;
+        if (Date.now() >= current.expiresAt) {
+          const expired = store.expireEntry(current.id, Date.now());
+          if (expired) emitExpired(expired.entry, expired.disposition, "scheduler", "expires_at");
+          unsubscribe();
+          return;
+        }
+        onLoopFire({ ...current, prompt: `${current.prompt}\nMonitor #${monitorId} signal (untrusted command output): ${JSON.stringify(data.outcome)}. The monitor remains subscribed; do not recreate it for this signal.` }, monitor);
+      });
+      monitorManager.onTerminal(monitorId, () => {
+        unsubscribe();
+        if (generation === sessionGeneration && isCurrentExtensionContext()) { store.delete(signalLoop.id); widget.update(); }
+      });
+    },
+  });
   registerLoopCommand({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire });
 }

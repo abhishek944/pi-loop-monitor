@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createCoordinator, type ReducerEffect, type ReducerEvent, type ReducerHandler } from "../coordinator.js";
 import { formatTrigger } from "../loop-format.js";
@@ -63,7 +64,11 @@ export function createNotificationRuntime({ pi, getHasPendingMessages, getIsIdle
       : `Loop lifecycle: Loop #${id} remains active. Do not delete or pause it merely because this run found no changes.`;
     return [`[pi-loop-monitor] Loop #${id} fired (${formatTrigger(data.trigger, "notification")}).${constraint}`, data.prompt, lifecycle].join("\n");
   }
-  function pending(data: LoopFireEvent): PendingNotification { return { ...data, sessionGeneration: data.sessionGeneration ?? sessionGeneration, key: data.recurring ? `loop:${data.loopId}` : `loop:${data.loopId}:${data.timestamp}`, message: fireMessage(data) }; }
+  function pending(data: LoopFireEvent): PendingNotification {
+    const signal = typeof data.trigger !== "string" && data.trigger.type === "event" && data.trigger.source === "monitor:signal";
+    const key = signal ? `loop:${data.loopId}:signal:${randomUUID()}` : data.recurring ? `loop:${data.loopId}` : `loop:${data.loopId}:${data.timestamp}`;
+    return { ...data, sessionGeneration: data.sessionGeneration ?? sessionGeneration, key, message: fireMessage(data) };
+  }
   function expired(data: LoopExpiredPayload & { sessionGeneration?: number }): PendingNotification {
     const stale = data.reason === "resume_event_stale";
     return { sessionGeneration: data.sessionGeneration ?? sessionGeneration, loopId: data.loopId, prompt: data.prompt, trigger: data.trigger, timestamp: data.expiredAt, recurring: data.recurring, key: `loop:${data.loopId}:expired:${data.expiresAt}`, message: [stale ? `[pi-loop-monitor] Loop #${data.loopId} retired during session recovery.` : `[pi-loop-monitor] Loop #${data.loopId} expired.`, data.prompt, stale ? "Event and hybrid subscriptions do not resume across sessions." : `Expiry boundary: ${new Date(data.expiresAt).toISOString()}`, "Recreate it explicitly if it is still required."].join("\n") };

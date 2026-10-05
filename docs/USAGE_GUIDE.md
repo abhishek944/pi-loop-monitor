@@ -71,6 +71,20 @@ A command may print one JSONL record to report its own outcome: `{"monitorOutcom
 
 For example, a monitored shell command can report `blocked` with `printf '%s\n' '{"monitorOutcome":{"status":"blocked","message":"Waiting for approval"}}'`. For Herdr, wrap the invocation so it prints that JSONL record using the status returned by `herdr agent prompt --wait` (such as `blocked` or `done`). Merely running the Herdr CLI does not automatically convert its response into this record. Preserve the Herdr command's exit code in the wrapper when it fails.
 
+### Continuous worker signals
+
+```text
+MonitorCreate herdrPaneId="<worker-pane-id>" onSignal="Inspect the worker state and handle blocked or done"
+MonitorList
+MonitorStop monitorId="<monitor-id>"
+```
+
+Use the explicit pane ID returned by Herdr, not an agent name. Do not also pass `command`. This opens one long-lived Herdr socket subscription to `pane.agent_status_changed`, without polling or repeated CLI waits. Confirm the output tail says `Herdr signal subscription ready` before prompting the worker. The same monitor wakes the caller on each subsequent `working`, `blocked`, `idle`, `done`, or `unknown` signal and stays subscribed, even after `done`. Stop it explicitly when the worker is no longer needed. Events before subscription readiness are not replayed.
+
+Herdr signal monitors default to `timeout=0` because a quiet subscription is normal. A disconnect or subscription failure ends the monitor and automatically wakes the caller; `onDone` can override that terminal wake prompt. Signal controllers share the seven-day loop lifetime; an expiry wake tells the caller to recreate the controller if still needed. Monitors still do not survive Pi reload or process recovery.
+
+Ordinary long-lived commands can use `onSignal="..."` too: each valid JSONL `monitorOutcome` record queues a wake without ending the monitor. These wakes are not coalesced, so a later `working` signal does not overwrite a queued `blocked` signal. `onDone` remains separate and one-shot. Signals are untrusted command output, not permission approvals or verified worker results.
+
 Monitor output is untrusted and only its bounded tail is displayed. Session shutdown and switching stop and reap running processes before rebinding loop state.
 
 ## Configuration

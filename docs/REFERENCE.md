@@ -26,7 +26,11 @@ Monitors run detached process groups, retain bounded output, rate-limit output e
 
 `onDone` creates an ordinary one-shot event loop and registers a direct monitor callback. The callback checks the current extension generation before firing and deletes the completion loop after delivery. A monitor without `onDone` gets a timeout-only alert loop when its inactivity timeout is enabled. Monitor processes are stopped and reaped before session replacement; monitor recovery across Pi process death is not supported.
 
-Events: `monitor:started`, `monitor:output`, `monitor:finished`, `monitor:done`, `monitor:error`, `loop:fire`, and `loops:expired`.
+`onSignal` creates a recurring signal controller scoped to the monitor. Each valid JSONL outcome record emits `monitor:signal` and queues a distinct idle-safe wake; signal records do not change process status or finish the monitor. Terminal cleanup unsubscribes and deletes the signal controller. Signal controllers retain ordinary pause/delete and seven-day expiry behavior.
+
+`herdrPaneId` selects a long-lived child command connected to the Herdr socket API `events.subscribe` with a pane-scoped `pane.agent_status_changed` subscription. It requires `onSignal`, defaults to no inactivity timeout, and automatically creates a terminal wake for connection failures. It uses the same process-group stop/shutdown boundary as shell monitors. No polling, state replay, automatic reconnect, or cross-process monitor recovery is introduced.
+
+Events: `monitor:started`, `monitor:output`, `monitor:signal`, `monitor:finished`, `monitor:done`, `monitor:error`, `loop:fire`, and `loops:expired`.
 
 ## Limits
 

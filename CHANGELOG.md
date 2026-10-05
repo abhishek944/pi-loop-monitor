@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4 - 2026-10-05
+
+- Keep one monitor subscribed to all Herdr worker state changes with `herdrPaneId` and `onSignal`.
+- Wake on every JSONL command-reported outcome without ending the monitor or overwriting earlier queued signals.
+- Clean up signal subscriptions on monitor termination and wake on Herdr connection failures.
+
 ## 0.2.3 - 2026-09-28
 
 - Pass an optional command-reported JSONL outcome separately from the monitor's process status and exit code.

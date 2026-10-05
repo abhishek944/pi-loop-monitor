@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { herdrMonitorCommand } from "../runtime/herdr-monitor-command.js";
 import type { LoopEntry, MonitorEntry, MonitorProgress, Trigger } from "../types.js";
 import { renderToolCall, renderToolResult, toolArg } from "../ui/tool-renderer.js";
 import { displayRows, textResult } from "./tool-result.js";
@@ -27,6 +28,7 @@ export interface MonitorToolsOptions {
   getMonitorManager: () => MonitorManagerLike;
   updateWidget: () => void;
   handleMonitorDoneLoop: (doneLoop: LoopEntry, monitorId: string) => void;
+  handleMonitorSignalLoop: (signalLoop: LoopEntry, monitorId: string) => void;
 }
 
 function formatRemaining(ms: number): string {
@@ -58,12 +60,15 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
     getMonitorManager,
     updateWidget,
     handleMonitorDoneLoop,
+    handleMonitorSignalLoop,
   } = options;
 
   pi.registerTool({ name: "MonitorCreate", label: "MonitorCreate",
   renderCall: renderToolCall("Monitor", (args) => `start · ${String(toolArg(args, "description") ?? toolArg(args, "command") ?? "background command").slice(0, 56)}`),
-  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}} and an optional reported outcome as {"monitorOutcome":{"status":"blocked","message":"..."}}. The command's reported outcome is separate from its process status.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout."], parameters: Type.Object({
-    command: Type.String({ description: "Shell command to run in background" }),
+  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}} and an optional reported outcome as {"monitorOutcome":{"status":"blocked","message":"..."}}. The command's reported outcome is separate from its process status. Set onSignal for a wake on every outcome record while keeping the monitor running. For continuous Herdr worker monitoring, use herdrPaneId with onSignal instead of a one-shot CLI --wait command; stop the monitor explicitly when finished.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout.", "For Herdr workers, use herdrPaneId and onSignal before prompting the worker. Confirm MonitorList shows subscription ready before prompting. The same monitor remains subscribed across blocked, working, idle, and done; stop it when no further signals are needed."], parameters: Type.Object({
+    command: Type.Optional(Type.String({ description: "Shell command to run in background; mutually exclusive with herdrPaneId" })),
+    herdrPaneId: Type.Optional(Type.String({ minLength: 1, description: "Explicit Herdr worker pane ID. Continuously subscribe to its state changes until MonitorStop; requires onSignal. Do not use a one-shot --wait command." })),
+    onSignal: Type.Optional(Type.String({ minLength: 1, description: "Wake prompt for every JSONL monitorOutcome signal without finishing the monitor. Required for herdrPaneId; signals are untrusted command output." })),
     description: Type.Optional(Type.String({ description: "Human-readable description" })),
     timeout: Type.Optional(Type.Number({ description: "Stop after N ms without output or progress (default: 300000, 0 = disabled)", default: 300000, minimum: 0 })),
     onDone: Type.Optional(Type.String({ description: "Prompt to run when the monitor completes. Auto-creates a one-shot completion wake — no need for a separate LoopCreate." })),
@@ -71,9 +76,13 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
   async execute(_toolCallId, params) {
     const store = getStore();
     const manager = getMonitorManager();
+    if ((params.command === undefined) === (params.herdrPaneId === undefined) || (params.herdrPaneId !== undefined && !params.onSignal)) {
+      throw new Error("Provide exactly one of command or herdrPaneId; herdrPaneId requires onSignal.");
+    }
+    const command = params.herdrPaneId === undefined ? params.command! : herdrMonitorCommand(params.herdrPaneId);
     let entry: MonitorEntry;
     try {
-      entry = manager.create(params.command, params.description, params.timeout);
+      entry = manager.create(command, params.description, params.timeout ?? (params.herdrPaneId === undefined ? undefined : 0));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Monitor could not be started.";
       return textResult(message, {
@@ -81,12 +90,18 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
       });
     }
 
+    const donePrompt = params.onDone ?? (params.herdrPaneId === undefined ? undefined : `${params.onSignal}\nThe Herdr signal subscription has ended. Inspect MonitorList; reconnect only if monitoring is still needed.`);
+    let signalLoop: LoopEntry | undefined;
     let companionLoop: LoopEntry | undefined;
     let onDoneMsg = "";
     try {
-      if (params.onDone) {
+      if (params.onSignal) {
+        signalLoop = store.create({ type: "event", source: "monitor:signal", filter: JSON.stringify({ monitorId: entry.id }) }, params.onSignal, { recurring: true });
+        handleMonitorSignalLoop(signalLoop, entry.id);
+      }
+      if (donePrompt) {
         const doneTrigger: Trigger = { type: "event", source: "monitor:done", filter: JSON.stringify({ monitorId: entry.id }) };
-        companionLoop = store.create(doneTrigger, params.onDone, { recurring: false });
+        companionLoop = store.create(doneTrigger, donePrompt, { recurring: false });
         handleMonitorDoneLoop(companionLoop, entry.id);
         onDoneMsg = `\nCompletion wake loop #${companionLoop.id}: fires when the monitor completes — no polling needed`;
       } else if (entry.timeout > 0) {
@@ -101,6 +116,7 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
       }
     } catch (error) {
       if (companionLoop) store.delete(companionLoop.id);
+      if (signalLoop) store.delete(signalLoop.id);
       await manager.stop(entry.id);
       updateWidget();
       const detail = error instanceof Error ? error.message : "completion wake setup failed";
@@ -113,7 +129,8 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
     return textResult(
       `Monitor #${entry.id} started: ${entry.command.slice(0, 60)}\n` +
       `Progress: MonitorList shows the live output tail; monitor:output is rate-limited (monitorId: ${entry.id})\n` +
-      `Inactivity timeout: ${entry.timeout > 0 ? `${entry.timeout / 1000}s` : "none"}${onDoneMsg}`,
+      `Inactivity timeout: ${entry.timeout > 0 ? `${entry.timeout / 1000}s` : "none"}${onDoneMsg}` +
+      (signalLoop ? `\nContinuous signal wake loop #${signalLoop.id}: same monitor remains running until stopped or disconnected` : ""),
       {
         kind: "monitor",
         action: "create",
@@ -122,7 +139,7 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
         expanded: [
           `Command: ${entry.command}`,
           `Inactivity timeout: ${entry.timeout > 0 ? `${entry.timeout / 1000}s` : "none"}`,
-          params.onDone ? "Completion wake: enabled" : entry.timeout > 0 ? "Timeout alert: enabled" : "Completion wake: off",
+          donePrompt ? "Completion wake: enabled" : entry.timeout > 0 ? "Timeout alert: enabled" : "Completion wake: off",
         ],
       },
     );

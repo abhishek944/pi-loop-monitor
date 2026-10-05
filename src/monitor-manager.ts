@@ -541,10 +541,13 @@ export class MonitorManager {
       const progress = parseJsonlProgress(line);
       if (progress) this.applyProgress(id, { ...progress, source: "jsonl" });
       const outcome = parseJsonlOutcome(line);
-      if (outcome) this.applyReducerEvent({
-        type: "MONITOR_OUTCOME_REPORTED", at: Date.now(), source: "monitor",
-        entityType: "monitor", entityId: id, payload: { id, outcome },
-      });
+      if (outcome) {
+        this.applyReducerEvent({
+          type: "MONITOR_OUTCOME_REPORTED", at: Date.now(), source: "monitor",
+          entityType: "monitor", entityId: id, payload: { id, outcome },
+        });
+        this.emit("monitor:signal", { monitorId: id, outcome, timestamp: Date.now() });
+      }
     }
     if (Date.now() - bp.lastOutputEventAt >= OUTPUT_EVENT_INTERVAL_MS) {
       this.emitOutputProgress(id, bp);

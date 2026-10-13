@@ -9,7 +9,7 @@ LoopCreate trigger="0 9 * * 1-5" prompt="Review alerts" maxFires=10
 LoopCreate trigger="tool_execution_end" triggerType="event" prompt="Inspect the tool result" recurring=true
 ```
 
-Intervals are converted to five-field cron expressions. Prefer events when a useful source exists. Hybrid triggers combine a schedule and event with debounce. Use `maxFires` for polling. Recurring loops expire after seven days and must be recreated explicitly when still needed.
+Intervals are converted to five-field cron expressions. Prefer events when a useful source exists. Hybrid triggers combine a schedule and event with debounce. `LoopCreate` accepts optional `maxFires` (an integer of at least `1`) to stop that loop after N fires; for example, `maxFires=10` stops after ten fires. Omitting it sets no fire-count limit. Use `maxFires` for polling. Recurring loops expire after seven days and must be recreated explicitly when still needed.
 
 ## Dynamic loops
 

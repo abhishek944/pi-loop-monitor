@@ -36,7 +36,9 @@ Events: `monitor:started`, `monitor:output`, `monitor:signal`, `monitor:finished
 
 ## Limits
 
-- 25 loops
+- 25 stored loops per session (hard limit, including active, paused, and monitor wake loops)
 - 25 running monitors
 - seven-day loop lifetime
 - five-minute default monitor inactivity timeout
+
+`LoopCreate.maxFires` is an optional per-loop fire-count limit (integer >= 1), separate from the hard 25-loop capacity. When omitted, there is no fire-count limit; other lifecycle conditions still apply.

@@ -28,7 +28,7 @@ export interface MonitorToolsOptions {
   getMonitorManager: () => MonitorManagerLike;
   updateWidget: () => void;
   handleMonitorDoneLoop: (doneLoop: LoopEntry, monitorId: string) => void;
-  handleMonitorSignalLoop: (signalLoop: LoopEntry, monitorId: string) => void;
+  handleMonitorSignalLoop: (signalLoop: LoopEntry, monitorId: string, herdrPaneId?: string) => void;
 }
 
 function formatRemaining(ms: number): string {
@@ -97,7 +97,7 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
     try {
       if (params.onSignal) {
         signalLoop = store.create({ type: "event", source: "monitor:signal", filter: JSON.stringify({ monitorId: entry.id }) }, params.onSignal, { recurring: true });
-        handleMonitorSignalLoop(signalLoop, entry.id);
+        handleMonitorSignalLoop(signalLoop, entry.id, params.herdrPaneId);
       }
       if (donePrompt) {
         const doneTrigger: Trigger = { type: "event", source: "monitor:done", filter: JSON.stringify({ monitorId: entry.id }) };

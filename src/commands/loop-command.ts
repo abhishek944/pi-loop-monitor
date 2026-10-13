@@ -32,6 +32,7 @@ export interface LoopCommandOptions {
   getTriggerSystem: () => TriggerSystemLike;
   updateWidget: () => void;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
+  configureSettings?: (ctx: ExtensionCommandContext) => Promise<void>;
 }
 
 type LoopCommandRoute =
@@ -196,6 +197,11 @@ export function registerLoopCommand(options: LoopCommandOptions): void {
     description: "Create a loop. Use /loop [interval] [prompt] for scheduled loops, /loop event <source> <prompt> for event loops, or /loop <goal> for a dynamic goal loop.",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const ui = ctx.ui;
+      if (args.trim().toLowerCase() === "settings") {
+        await settings(ui);
+        if (options.configureSettings) await options.configureSettings(ctx);
+        return;
+      }
       const route = parseLoopCommandRoute(args);
 
       if (route.type === "menu") {
@@ -210,7 +216,9 @@ export function registerLoopCommand(options: LoopCommandOptions): void {
         if (choice.startsWith("Create scheduled")) return scheduleLoop(ui);
         if (choice.startsWith("Create event")) return eventLoop(ui);
         if (choice.startsWith("View loops")) return viewLoops(ui);
-        return settings(ui);
+        await settings(ui);
+        if (options.configureSettings) return options.configureSettings(ctx);
+        return;
       }
 
       if (route.type === "event") return eventLoop(ui, route.prompt, route.source);

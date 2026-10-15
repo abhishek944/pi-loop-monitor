@@ -9,11 +9,14 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { formatTrigger } from "../loop-format.js";
+import type { MonitorOutputPage } from "../monitor-output-log.js";
 import type { LoopEntry, MonitorEntry } from "../types.js";
+import { MonitorOutputView } from "./monitor-output-view.js";
 
 export interface MonitorsDashboardActions {
   listLoops(): LoopEntry[];
   listMonitors(): MonitorEntry[];
+  readMonitorOutput(id: string, offset?: number): MonitorOutputPage;
   pauseLoop(id: string): boolean;
   resumeLoop(id: string): boolean;
   deleteLoop(id: string): boolean;
@@ -39,6 +42,7 @@ export class MonitorsDashboard implements Component, Focusable {
   private snapshotError: string | undefined;
   private scrollOffset = 0;
   private detailsVisible = true;
+  private outputView: { id: string; view: MonitorOutputView } | undefined;
   private pendingAction: PendingAction | undefined;
   private message: string | undefined;
   private busy = false;
@@ -63,8 +67,12 @@ export class MonitorsDashboard implements Component, Focusable {
     const dialogWidth = Math.max(1, width);
     this.lastRenderWidth = dialogWidth;
     const items = this.getItems();
-    this.syncSelection(items);
     const dialogHeight = this.getDialogHeight();
+    if (this.outputView) {
+      const monitor = items.find((item) => item.kind === "monitor" && item.monitor.id === this.outputView?.id);
+      return this.outputView.view.render(dialogWidth, dialogHeight, monitor?.kind === "monitor" ? monitor.monitor : undefined);
+    }
+    this.syncSelection(items);
     const monitors = items.filter((item) => item.kind === "monitor");
     const loops = items.filter((item) => item.kind === "loop");
     const running = monitors.filter((item) => item.monitor.status === "running").length;
@@ -112,7 +120,16 @@ export class MonitorsDashboard implements Component, Focusable {
       const configuredPageDown = this.keybindings.matches(data, "tui.select.pageDown");
       const configuredConfirm = this.keybindings.matches(data, "tui.select.confirm");
       if (configuredCancel) {
-        this.close();
+        this.backOrClose();
+        return;
+      }
+      if (this.outputView) {
+        if (matchesKey(data, Key.ctrl("c")) || matchesKey(data, Key.escape) || matchesKey(data, "q")) {
+          this.backOrClose();
+        } else {
+          this.outputView.view.handleInput(data);
+          this.tui.requestRender();
+        }
         return;
       }
       const items = this.getItems();
@@ -127,8 +144,7 @@ export class MonitorsDashboard implements Component, Focusable {
       } else if (configuredPageDown) {
         this.select(items, Math.min(items.length - 1, index + 8));
       } else if (configuredConfirm) {
-        this.detailsVisible = !this.detailsVisible;
-        this.pendingAction = undefined;
+        this.openDetails(items[index]);
       } else if (matchesKey(data, Key.ctrl("c")) || matchesKey(data, Key.escape) || matchesKey(data, "q")) {
         this.close();
         return;
@@ -145,8 +161,7 @@ export class MonitorsDashboard implements Component, Focusable {
       } else if (matchesKey(data, Key.end)) {
         this.select(items, items.length - 1);
       } else if (matchesKey(data, Key.enter) || matchesKey(data, Key.space)) {
-        this.detailsVisible = !this.detailsVisible;
-        this.pendingAction = undefined;
+        this.openDetails(items[index]);
       } else if (matchesKey(data, "p")) {
         this.toggleLoop(items[index]);
       } else if (matchesKey(data, "d")) {
@@ -164,7 +179,32 @@ export class MonitorsDashboard implements Component, Focusable {
     }
   }
 
-  invalidate(): void {}
+  invalidate(): void {
+    this.outputView?.view.invalidate();
+  }
+
+  private openDetails(item: DashboardItem | undefined): void {
+    this.pendingAction = undefined;
+    if (item?.kind === "monitor") {
+      const id = item.monitor.id;
+      this.outputView = {
+        id,
+        view: new MonitorOutputView(this.theme, this.keybindings, (offset) => this.actions.readMonitorOutput(id, offset)),
+      };
+    } else {
+      this.detailsVisible = !this.detailsVisible;
+    }
+  }
+
+  private backOrClose(): void {
+    if (!this.outputView) {
+      this.close();
+      return;
+    }
+    this.outputView = undefined;
+    this.pendingAction = undefined;
+    this.tui.requestRender();
+  }
 
   dispose(): void {
     if (this.disposed) return;
@@ -330,7 +370,7 @@ export class MonitorsDashboard implements Component, Focusable {
       ? this.pendingAction.action === "delete"
         ? "Press d again to delete this loop"
         : "Press s again to stop this monitor"
-      : this.message ?? this.snapshotError ?? "Ready. Select an item; Escape closes.";
+      : this.message ?? this.snapshotError ?? "Ready. Enter opens monitor output; Escape closes.";
     return truncateToWidth(this.theme.fg("warning", safeSingleLine(pending)), width);
   }
 
@@ -359,11 +399,11 @@ export class MonitorsDashboard implements Component, Focusable {
       !claimed.has(normalizeKeyId("d")) ? "d delete" : "",
       !claimed.has(normalizeKeyId("r")) ? "r refresh" : "",
     ].filter(Boolean);
-    const full = [navigation, `${details} details`, ...actions, `${close} close`].join(" · ");
+    const full = [navigation, `${details} open/details`, ...actions, `${close} close`].join(" · ");
     const compactActions = ["p", "s", "d"].filter((key) => !claimed.has(normalizeKeyId(key)));
     const compact = [
       navigation,
-      `${details} details`,
+      `${details} open/details`,
       compactActions.length > 0 ? `${compactActions.join("/")} action` : "",
       `${close} close`,
     ].filter(Boolean).join(" · ");

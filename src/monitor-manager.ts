@@ -2,6 +2,7 @@
 import { type ChildProcess, spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { MonitorOutputLog, type MonitorOutputPage } from "./monitor-output-log.js";
 import {
   type MonitorReducerEvent,
   type MonitorReducerState,
@@ -26,6 +27,7 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export class MonitorManager {
   private processes = new Map<string, MonitorProcess>();
+  private readonly outputLogs = new Map<string, MonitorOutputLog>();
   private nextId = 1;
   private onChange: (() => void) | undefined;
   private spawnFn: SpawnFn;
@@ -71,6 +73,7 @@ export class MonitorManager {
       const updated = result.state.monitorsById[id];
       if (!updated) {
         this.processes.delete(id);
+        this.disposeOutputLog(id);
         continue;
       }
       process.entry = updated;
@@ -218,12 +221,20 @@ export class MonitorManager {
     const entry = result.state.monitorsById[id]!;
 
     const abortController = new AbortController();
-    const child = this.spawnFn("sh", ["-c", command], {
-      stdio: ["ignore", "pipe", "pipe"],
-      signal: abortController.signal,
-      env: { ...process.env },
-      detached: this.platform !== "win32",
-    });
+    const log = new MonitorOutputLog();
+    let child: ChildProcess;
+    try {
+      child = this.spawnFn("sh", ["-c", command], {
+        stdio: ["ignore", "pipe", "pipe"],
+        signal: abortController.signal,
+        env: { ...process.env },
+        detached: this.platform !== "win32",
+      });
+    } catch (error) {
+      log.dispose();
+      throw error;
+    }
+    this.outputLogs.set(id, log);
 
     const bp: MonitorProcess = {
       entry,
@@ -357,6 +368,18 @@ export class MonitorManager {
       .sort((a, b) => Number(a.id) - Number(b.id));
   }
 
+  readOutput(id: string, offset?: number): MonitorOutputPage {
+    const log = this.outputLogs.get(id);
+    if (!log) throw new Error("Monitor output is no longer available");
+    return log.read(offset);
+  }
+
+  private disposeOutputLog(id: string): void {
+    const log = this.outputLogs.get(id);
+    this.outputLogs.delete(id);
+    try { log?.dispose(); } catch { /* best-effort temporary file cleanup */ }
+  }
+
   shutdown(): Promise<void> {
     if (this.shutdownPromise) return this.shutdownPromise;
 
@@ -375,6 +398,7 @@ export class MonitorManager {
           bp.waiters = [];
         }
         this.processes.clear();
+        for (const id of this.outputLogs.keys()) this.disposeOutputLog(id);
         this.shuttingDown = false;
         this.shutdownPromise = undefined;
       });
@@ -495,12 +519,15 @@ export class MonitorManager {
   }
 
   private handleOutput(id: string, bp: MonitorProcess, stream: "stdout" | "stderr", data: Buffer): void {
+    this.outputLogs.get(id)?.append(data);
     if (this.shuttingDown) return;
     if (data.length > 0) this.markActivity(bp);
     const decoder = stream === "stdout" ? bp.stdoutDecoder : bp.stderrDecoder;
+    const text = decoder.write(data);
     const remainderKey = stream === "stdout" ? "stdoutRemainder" : "stderrRemainder";
-    const records = `${bp[remainderKey]}${decoder.write(data)}`.split("\n");
-    bp[remainderKey] = records.pop() ?? "";
+    const records = `${bp[remainderKey]}${text}`.split("\n");
+    // The complete text is already on disk; only the bounded tool tail needs this remainder.
+    bp[remainderKey] = (records.pop() ?? "").slice(0, MAX_OUTPUT_LINE_LENGTH + 1);
     this.recordOutputLines(id, bp, records);
   }
 

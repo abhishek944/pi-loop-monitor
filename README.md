@@ -6,7 +6,7 @@ This project was adapted from [trvon/pi-loop](https://github.com/trvon/pi-loop) 
 
 ## Installation
 
-Read-only wakes require the Pi Ask guard. Install `@abhishek944/pi-ask@0.2.0` or newer first. To use this checkout before its npm release, run `npm run build` and `pi install /absolute/path/to/pi-loop-monitor` (personal scope), then run `/reload` in Pi. Once published to npm, install `pi-loop-monitor@0.2.5` instead.
+Read-only wakes require the Pi Ask guard. Install `@abhishek944/pi-ask@0.2.0` or newer first. To use this checkout before its npm release, run `npm run build` and `pi install /absolute/path/to/pi-loop-monitor` (personal scope), then run `/reload` in Pi. Once published to npm, install `pi-loop-monitor@0.2.6` instead.
 
 ## Surface
 
@@ -40,7 +40,9 @@ MonitorStop monitorId="1"
 /monitors
 ```
 
-The `/monitors` dashboard uses the same top-centered overlay shape as `pi-btw`, so the main chat remains visible behind it. It refreshes live, shows bounded loop and monitor details, and supports keyboard actions: arrows or `j`/`k` to select, `Enter` to toggle details, `p` to pause or resume a loop, `s` twice to stop a monitor, `d` twice to delete a loop, and `Escape` or `Ctrl+C` to close.
+The `/monitors` dashboard uses the same top-centered overlay shape as `pi-btw`, so the main chat remains visible behind it. It refreshes live. Use arrows or `j`/`k` to select, then `Enter` to open a dedicated monitor output window (or toggle loop details). Output wraps and the complete captured command output is scrollable: arrows scroll, `PageUp`/`PageDown` page, `Home` goes to the beginning, and `End` follows live output. `Escape` returns to the overview; another `Escape` closes it. Overview actions remain `p` to pause/resume a loop, `s` twice to stop a monitor, and `d` twice to delete a loop.
+
+Full stdout/stderr capture uses private temporary files with bounded in-memory reads. Logs are removed when the monitor is pruned (15 minutes after termination) or the session shuts down, switches, or reloads. They are not a durable archive. `MonitorList` still shows only a bounded tail. Herdr subscription monitors show subscription signals, not the worker's full transcript; use its Herdr tab for that.
 
 `MonitorCreate.timeout` is an inactivity timeout. Output, JSONL progress, or `MonitorUpdate` renews it. `onDone` creates a direct one-shot loop wake after completion; it does not require another controller subsystem.
 

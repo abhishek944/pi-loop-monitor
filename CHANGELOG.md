@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6 - 2026-10-16
+
+- Open a dedicated live output window for a selected monitor, with Escape returning to the loops and monitors overview.
+- Capture complete command stdout/stderr in private temporary logs, with wrapped history browsing and bounded in-memory reads.
+- Preserve blank lines, long lines, and partial output; sanitize terminal controls and clean up logs with the monitor lifecycle.
+
 ## 0.2.5 - 2026-10-05
 
 - Upgrade Pi development dependencies to 1.0.2 to resolve vulnerable shrinkwrapped `brace-expansion` and `undici` copies.

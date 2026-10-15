@@ -58,6 +58,7 @@ export function registerMonitorsCommand(options: MonitorsCommandOptions): void {
           return new MonitorsDashboard(tui, theme, keybindings, {
             listLoops: () => getStore().list(),
             listMonitors: () => getMonitorManager().list(),
+            readMonitorOutput: (id, offset) => getMonitorManager().readOutput(id, offset),
             pauseLoop: (id) => {
               const entry = getStore().get(id);
               if (entry?.status !== "active") return false;

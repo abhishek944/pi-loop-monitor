@@ -47,14 +47,28 @@ LoopDelete id="1"
 Run `/monitors` in interactive TUI mode to inspect all loops and background monitors without adding anything to the conversation. The top-centered overlay leaves the main chat visible behind it, refreshes once per second, and does not replace the main editor.
 
 - `Up`/`Down` or `j`/`k`: select
-- `Enter` or `Space`: show or hide details
+- `Enter` or `Space`: open the selected monitor's output window, or show/hide loop details
 - `p`: pause or resume the selected loop
 - `s` twice: stop the selected running monitor
 - `d` twice: delete the selected loop
 - `r`: refresh now
 - `Escape`, `Ctrl+C`, or `q`: close
 
-Commands and buffered output are sanitized and truncated to the available terminal width. Stop and delete require a second key press within four seconds.
+The overview keeps compact, single-line previews. Stop and delete require a second key press within four seconds.
+
+### Dedicated monitor output window
+
+Open a monitor with `Enter` or `Space`. Its output replaces the overview inside the overlay, leaving a clear window for that one command. The window follows live output by default, refreshes once per second, preserves blank lines and indentation, and wraps long output instead of truncating it.
+
+- `Up`/`Down` or `j`/`k`: scroll; scrolling pauses live following
+- `PageUp`/`PageDown`: page through output, loading older/newer chunks as needed
+- `Home`: jump to the beginning of the command output
+- `End`: return to the latest output and resume live following
+- `Escape`, `Ctrl+C`, or `q`: return to the overview with the same selection
+
+The footer shows `LIVE` or `HISTORY`, the loaded byte range, and the temporary log path. Only a bounded chunk is loaded at once; the entire captured output remains browsable on disk, including output beyond the 200-line tool tail and lines longer than 4096 characters. Terminal escape sequences are stripped and remaining control characters escaped for safe display; this is a UTF-8 plain-text output viewer, not an interactive terminal or binary viewer. Invalid/incomplete UTF-8 bytes may display as replacement characters; the log retains the original bytes. Output without a trailing newline also appears while the command runs. Capture errors are shown explicitly; a disk failure does not kill the command, but output after that failure cannot be recovered.
+
+Logs are private temporary files, removed on monitor pruning (15 minutes after termination) or session shutdown, switching, and reload. Copy a log before cleanup if you need an archive. Logs do not survive normal cleanup, and output lost before this version started capturing cannot be recovered. Very verbose commands consume disk space until cleanup.
 
 ## Background monitors
 
@@ -85,7 +99,7 @@ Herdr signal monitors default to `timeout=0` because a quiet subscription is nor
 
 Ordinary long-lived commands can use `onSignal="..."` too: each valid JSONL `monitorOutcome` record queues a wake without ending the monitor. These wakes are not coalesced, so a later `working` signal does not overwrite a queued `blocked` signal. `onDone` remains separate and one-shot. Signals are untrusted command output, not permission approvals or verified worker results.
 
-Monitor output is untrusted and only its bounded tail is displayed. Session shutdown and switching stop and reap running processes before rebinding loop state.
+Monitor output is untrusted. `MonitorList` displays only its bounded tail; the dedicated `/monitors` output window reads the full capture. Herdr subscription monitors capture subscription signals only, not the worker transcript; inspect the worker's Herdr tab for its complete conversation. Session shutdown and switching stop and reap running processes before rebinding loop state.
 
 ## Configuration
 

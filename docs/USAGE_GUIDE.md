@@ -87,38 +87,8 @@ Ordinary long-lived commands can use `onSignal="..."` too: each valid JSONL `mon
 
 Monitor output is untrusted and only its bounded tail is displayed. Session shutdown and switching stop and reap running processes before rebinding loop state.
 
-### Classifier recovery (opt-in, Herdr only)
-
-Classifier recovery is disabled by default. When enabled, an `idle` or `done` Herdr signal first reads the worker's last 10 terminal lines and asks a Pi classifier whether the worker should continue. A confident `continue` decision prompts the live worker automatically and suppresses that signal's caller wake. Every other decision, low confidence, missing credentials, timeout, ineligible worker, changed session, disabled feature, or prompt failure keeps the existing caller notification unchanged.
-
-The classifier chooses one label:
-
-- `complete`: output shows the assigned task is finished.
-- `continue`: output explicitly shows unfinished work with a safe next step.
-- `blocked`: work needs input, authorization, credentials, an external prerequisite, or was cancelled.
-- `inspect`: evidence is missing, contradictory, scope is unclear, or caller inspection is needed.
-
-Only `continue` can trigger an automatic prompt, and only for a live Pi worker that is still `idle` or `done` with unchanged session identity. Working, blocked, unknown, read-only, expired, paused, manually stopped, or replaced-session work is never auto-continued. The worker is never restarted; a dead process keeps its normal caller notification.
-
-Configure with `/loop settings` or edit `~/.pi/agent/pi-loop-monitor.json`:
-
-```json
-{
-  "classifierRecovery": {
-    "enabled": false,
-    "provider": "typesafe",
-    "model": "jev-latest",
-    "minContinueProbability": 0.8,
-    "maxAttempts": 1
-  }
-}
-```
-
-Supported classifiers are Jev (`typesafe/jev-latest`), OpenAI Decisions (`openai/gpt-6-luna`), and Cloudflare Clef/Clef Flash. The provider needs usable Pi credentials. `minContinueProbability` must be 0.8-1. `maxAttempts` (1-10) limits automatic continuations per monitor. Enabling shares the 10-line snippet with the classifier provider and may incur charges; common secrets are redacted, but sensitive text may remain.
-
 ## Configuration
 
 - `PI_LOOP_DEBUG`: enables debug logging
-- `~/.pi/agent/pi-loop-monitor.json`: optional `classifierRecovery` opt-in above; absent file means disabled
 
 Loops are always scoped to one Pi session. Their state is persisted under `~/.pi/loops/` as `loops-<session-id>.json` and is never shared between sessions. Monitor state remains process-local.

@@ -1,16 +1,14 @@
 /** Private pi-loop-monitor extension for persistent loop wakes and background process monitoring. */
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { configureClassifierRecovery, readClassifierRecoveryConfig } from "./classifier-recovery-config.js";
 import { registerLoopCommand } from "./commands/loop-command.js";
 import { registerMonitorsCommand } from "./commands/monitors-command.js";
 import { atMaxFires } from "./loop-reducer.js";
 import { MonitorManager } from "./monitor-manager.js";
-import { tryContinueHerdrWorker } from "./runtime/classifier-recovery.js";
 import { buildLoopExpiredPayload } from "./runtime/loop-events.js";
 import { createMonitorOnDoneRuntime } from "./runtime/monitor-ondone-runtime.js";
 import { createNotificationRuntime, type LoopFireEvent } from "./runtime/notification-runtime.js";
-import { getReadOnlyWakeGuardStatus, isReadOnlyWakeGuardAvailable } from "./runtime/read-only-guard-runtime.js";
+import { isReadOnlyWakeGuardAvailable } from "./runtime/read-only-guard-runtime.js";
 import { resolveLoopStorePath } from "./runtime/scope.js";
 import { registerSessionRuntimeHooks } from "./runtime/session-runtime.js";
 import { isStaleExtensionContextError } from "./runtime/stale-context.js";
@@ -162,20 +160,11 @@ export default function (pi: ExtensionAPI) {
   registerMonitorTools({
     pi, getStore: () => store, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(),
     handleMonitorDoneLoop: (doneLoop, monitorId) => monitorOnDoneRuntime.register(doneLoop, monitorId),
-    handleMonitorSignalLoop: (signalLoop, monitorId, herdrPaneId) => {
+    handleMonitorSignalLoop: (signalLoop, monitorId) => {
       const generation = sessionGeneration;
-      const lifetime = new AbortController();
-      let signalVersion = 0;
-      let recovering = false;
-      let attempts = 0;
-      let configWarningShown = false;
-      const active = () => !lifetime.signal.aborted && generation === sessionGeneration && isCurrentExtensionContext()
-        && store.get(signalLoop.id)?.status === "active" && Date.now() < (store.get(signalLoop.id)?.expiresAt ?? 0)
-        && monitorManager.get(monitorId)?.status === "running";
       const unsubscribe = pi.events.on("monitor:signal", (event: unknown) => {
         const data = event as { monitorId?: string; outcome?: unknown };
         if (data.monitorId !== monitorId || generation !== sessionGeneration || !isCurrentExtensionContext()) return;
-        const version = ++signalVersion;
         const current = store.get(signalLoop.id);
         const monitor = monitorManager.get(monitorId);
         if (current?.status !== "active" || monitor?.status !== "running") return;
@@ -185,42 +174,13 @@ export default function (pi: ExtensionAPI) {
           unsubscribe();
           return;
         }
-        const forward = () => {
-          if (!active()) return;
-          const entry = store.get(signalLoop.id);
-          if (entry?.status !== "active") return;
-          // Retain the event's outcome rather than a later signal's latest reportedOutcome.
-          onLoopFire({ ...entry, prompt: `${entry.prompt}\nMonitor #${monitorId} signal (untrusted command output): ${JSON.stringify(data.outcome)}. The monitor remains subscribed; do not recreate it for this signal.` }, monitor);
-        };
-        const outcome = data.outcome as { status?: unknown } | undefined;
-        const status = outcome?.status;
-        const ctx = latestCtx;
-        if (!herdrPaneId || !ctx || recovering || current.readOnly || getReadOnlyWakeGuardStatus(pi).active
-          || (status !== "idle" && status !== "done")) { forward(); return; }
-        try {
-          const config = readClassifierRecoveryConfig();
-          if (!config.enabled || attempts >= config.maxAttempts) { forward(); return; }
-          recovering = true;
-          const valid = () => active() && version === signalVersion && !store.get(signalLoop.id)?.readOnly
-            && !getReadOnlyWakeGuardStatus(pi).active;
-          void tryContinueHerdrWorker(ctx, herdrPaneId, status, config, valid, lifetime.signal, () => { attempts++; })
-            .then((continued) => { if (!continued) forward(); })
-            .catch(() => forward())
-            .finally(() => { recovering = false; });
-        } catch {
-          if (!configWarningShown) {
-            configWarningShown = true;
-            ctx.ui.notify("Invalid pi-loop-monitor classifierRecovery configuration. Signals still go to the caller; check /loop settings.", "warning");
-          }
-          forward();
-        }
+        onLoopFire({ ...current, prompt: `${current.prompt}\nMonitor #${monitorId} signal (untrusted command output): ${JSON.stringify(data.outcome)}. The monitor remains subscribed; do not recreate it for this signal.` }, monitor);
       });
       monitorManager.onTerminal(monitorId, () => {
-        lifetime.abort();
         unsubscribe();
         if (generation === sessionGeneration && isCurrentExtensionContext()) { store.delete(signalLoop.id); widget.update(); }
       });
     },
   });
-  registerLoopCommand({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire, configureSettings: configureClassifierRecovery });
+  registerLoopCommand({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire });
 }

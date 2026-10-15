@@ -30,8 +30,6 @@ Monitors run detached process groups, retain bounded output, rate-limit output e
 
 `herdrPaneId` selects a long-lived child command connected to the Herdr socket API `events.subscribe` with a pane-scoped `pane.agent_status_changed` subscription. It requires `onSignal`, defaults to no inactivity timeout, and automatically creates a terminal wake for connection failures. It uses the same process-group stop/shutdown boundary as shell monitors. No polling, state replay, automatic reconnect, or cross-process monitor recovery is introduced.
 
-Optional classifier recovery (`~/.pi/agent/pi-loop-monitor.json`, disabled by default) classifies the worker's last 10 terminal lines on `idle`/`done` signals using Jev, OpenAI Decisions, or Cloudflare Clef. A confident `continue` prompts the live Pi worker and suppresses only that signal's wake; `complete`, `blocked`, `inspect`, failures, ineligible/read-only/manual-stop/session-changed work, and exhausted `maxAttempts` retain normal caller delivery. Continuation never restarts a dead worker and never retries an uncertain prompt send.
-
 Events: `monitor:started`, `monitor:output`, `monitor:signal`, `monitor:finished`, `monitor:done`, `monitor:error`, `loop:fire`, and `loops:expired`.
 
 ## Limits

@@ -2,11 +2,11 @@
 
 ## Ownership
 
-`LoopStore` exclusively owns persisted loop state under `~/.pi/loops/`. `MonitorManager` owns process-local monitor state. Notification buffers are memory-only; when a session shuts down, discarded one-shot and final bounded read-only notifications retire their controllers instead of leaving already-fired state to run again. This package has no task store, task or subagent RPC, workflow state, orchestration state, or controller-routing runtime.
+`LoopStore` exclusively owns persisted loop state under `~/.pi/loops/`. `MonitorManager` owns process-local monitor state. Notification buffers are memory-only; routine monitor signals hold one latest state per subscription, and delivery revalidates the source before sending. When a session shuts down, discarded one-shot and final bounded read-only notifications retire their controllers instead of leaving already-fired state to run again. This package has no task store, task or subagent RPC, workflow state, orchestration state, or controller-routing runtime.
 
 ## Loops
 
-Triggers are cron, event, hybrid, or dynamic. Loops can be active or paused and may have an administrative or controller-limit pause record. Recurring controllers expire after seven days. Event and hybrid subscriptions created in an older session are retired on recovery. Retirement emits `loops:expired` and queues a hidden idle-safe notification.
+Triggers are cron, event, hybrid, or dynamic. Loops can be active or paused and may have an administrative or controller-limit pause record. Recurring controllers expire after seven days. Event and hybrid subscriptions created in an older session are retired on recovery. Retirement invalidates queued nonterminal wakes for that source, emits `loops:expired`, and queues a hidden idle-safe expiry notification; one-shot, max-fires, and read-only terminal receipts keep their existing delivery behavior.
 
 Dynamic loops preserve goal, state, metrics, done criteria, iteration, and optional next wake time. Each dynamic wake sets `awaitingUpdate`; `LoopUpdate` clears it or completes/pauses the controller with a compare-and-set guard.
 
@@ -26,7 +26,7 @@ Monitors run detached process groups, retain a bounded 200-line tool tail, rate-
 
 `onDone` creates an ordinary one-shot event loop and registers a direct monitor callback. The callback checks the current extension generation before firing and deletes the completion loop after delivery. A monitor without `onDone` gets a timeout-only alert loop when its inactivity timeout is enabled. Monitor processes are stopped and reaped before session replacement; monitor recovery across Pi process death is not supported.
 
-`onSignal` creates a recurring signal controller scoped to the monitor. Each valid JSONL outcome record emits `monitor:signal` and queues a distinct idle-safe wake; signal records do not change process status or finish the monitor. Terminal cleanup unsubscribes and deletes the signal controller. Signal controllers retain ordinary pause/delete and seven-day expiry behavior.
+`onSignal` creates a recurring signal controller scoped to the monitor. Each valid JSONL outcome record updates one latest-state mailbox for that monitor; a newer state replaces a pending one, and consecutive identical `status`/`message` pairs add no notification work. Current monitor mailboxes are delivered as one idle digest where compatible; read-only, dynamic, and ordinary loop notices are never merged into it. Intermediate events remain in monitor output, not as separate wakes. Terminal cleanup unsubscribes and deletes the signal controller and drops queued signal notices. Manual stop also drops queued signal notices without starting a turn; an explicit `MonitorStop` on an already-finished monitor dismisses its pending terminal receipt, including after the monitor record has been pruned. Automatic one-shot retirement still preserves one valid completion receipt. Signal controllers retain ordinary pause/delete and seven-day expiry behavior.
 
 `herdrPaneId` selects a long-lived child command connected to the Herdr socket API `events.subscribe` with a pane-scoped `pane.agent_status_changed` subscription. It requires `onSignal`, defaults to no inactivity timeout, and automatically creates a terminal wake for connection failures. It uses the same process-group stop/shutdown boundary as shell monitors. No polling, state replay, automatic reconnect, or cross-process monitor recovery is introduced.
 

@@ -140,14 +140,16 @@ export class CronScheduler {
         continue;
       }
 
-      if (entry.trigger.type === "dynamic" && entry.dynamic?.awaitingUpdate) continue;
-
-      if (filter && !filter(entry)) continue;
-
+      // Expiry takes precedence over awaiting/filter skips so an expired
+      // controller still retires and emits its expiry receipt.
       if (now >= entry.expiresAt) {
         this.retireExpired(entry, now);
         continue;
       }
+
+      if (entry.trigger.type === "dynamic" && entry.dynamic?.awaitingUpdate) continue;
+
+      if (filter && !filter(entry)) continue;
 
       this.onFire(entry, "scheduler");
 

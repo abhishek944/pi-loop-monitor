@@ -32,6 +32,7 @@ export interface LoopCommandOptions {
   getTriggerSystem: () => TriggerSystemLike;
   updateWidget: () => void;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
+  onLoopStopped?: (loopId: string) => void;
 }
 
 type LoopCommandRoute =
@@ -73,7 +74,7 @@ function parseLoopCommandRoute(input: string): LoopCommandRoute {
 }
 
 export function registerLoopCommand(options: LoopCommandOptions): void {
-  const { pi, getStore, getTriggerSystem, updateWidget, onDynamicLoopActivated } = options;
+  const { pi, getStore, getTriggerSystem, updateWidget, onDynamicLoopActivated, onLoopStopped } = options;
 
   function createCronLoop(ui: ExtensionUIContext, interval: string, prompt: string, notifyEvery: boolean) {
     let entry: LoopEntry | undefined;
@@ -166,11 +167,13 @@ export function registerLoopCommand(options: LoopCommandOptions): void {
           getTriggerSystem().remove(entry.id);
           getStore().delete(entry.id);
           updateWidget();
+          onLoopStopped?.(entry.id);
           ui.notify(`Loop #${entry.id} deleted`, "info");
         } else if (action === "- Pause") {
           getStore().pause(entry.id);
           getTriggerSystem().remove(entry.id);
           updateWidget();
+          onLoopStopped?.(entry.id);
           ui.notify(`Loop #${entry.id} paused`, "info");
         } else if (action === "* Resume") {
           const resumed = getStore().resume(entry.id);

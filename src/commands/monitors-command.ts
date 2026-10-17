@@ -17,6 +17,8 @@ export interface MonitorsCommandOptions {
   getTriggerSystem: () => TriggerSystemLike;
   updateWidget: () => void;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
+  onLoopStopped?: (loopId: string) => void;
+  onMonitorStopping?: (monitorId: string) => void;
 }
 
 export function registerMonitorsCommand(options: MonitorsCommandOptions): void {
@@ -27,6 +29,8 @@ export function registerMonitorsCommand(options: MonitorsCommandOptions): void {
     getTriggerSystem,
     updateWidget,
     onDynamicLoopActivated,
+    onLoopStopped,
+    onMonitorStopping,
   } = options;
   let closeActiveDashboard: (() => void) | undefined;
   const refreshWidget = () => {
@@ -65,6 +69,7 @@ export function registerMonitorsCommand(options: MonitorsCommandOptions): void {
               const paused = getStore().pause(id);
               if (!paused) return false;
               try { getTriggerSystem().remove(id); } catch { /* paused state remains authoritative */ }
+              onLoopStopped?.(id);
               refreshWidget();
               return true;
             },
@@ -88,10 +93,12 @@ export function registerMonitorsCommand(options: MonitorsCommandOptions): void {
               const deleted = getStore().delete(id);
               if (!deleted) return false;
               try { getTriggerSystem().remove(id); } catch { /* deleted state remains authoritative */ }
+              onLoopStopped?.(id);
               refreshWidget();
               return true;
             },
             stopMonitor: async (id) => {
+              onMonitorStopping?.(id);
               const stopped = await getMonitorManager().stop(id);
               refreshWidget();
               return stopped;

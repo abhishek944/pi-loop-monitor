@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.8 - 2026-10-17
+
+- Replace queued per-event monitor signal wakes with one latest-state mailbox per monitor subscription and a compatible idle digest; consecutive identical reported states no longer enqueue notification work.
+- Drop queued monitor and loop notices when their source is stopped, paused, deleted, explicitly completed, or automatically expired, while preserving automatic one-shot completion receipts and monitor output history.
+- Revalidate pending notices at delivery against their source lifecycle: expired loops, advanced dynamic iterations, paused/stopped monitors, and dismissed terminal wakes are dropped without replaying stale instructions; `MonitorStop` can dismiss a pending terminal wake for an already-finished or pruned monitor.
+
 ## 0.2.7 - 2026-10-17
 
 - Prepare the dedicated full-output monitor feature for npm distribution under a fresh patch version; runtime behavior is unchanged from 0.2.6.

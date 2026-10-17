@@ -14,6 +14,7 @@ export class TriggerSystem {
     private scheduler: CronScheduler,
     private store: LoopStore,
     private onFire: (entry: LoopEntry, origin: LoopFireOrigin) => void,
+    private isDedicatedEventLoop: (loopId: string) => boolean = () => false,
   ) {}
 
   start(): void {
@@ -21,6 +22,7 @@ export class TriggerSystem {
     for (const entry of this.store.list()) {
       if (entry.status !== "active") continue;
       if (entry.trigger.type !== "event" && entry.trigger.type !== "hybrid") continue;
+      if (this.isDedicatedEventLoop(entry.id)) continue;
       const event = entry.trigger.type === "hybrid" ? entry.trigger.event : entry.trigger;
       this.subscribeEvent(entry, event.source, event.filter);
     }
@@ -38,7 +40,7 @@ export class TriggerSystem {
 
   add(entry: LoopEntry): void {
     this.scheduler.add(entry);
-    if (entry.trigger.type === "event" || entry.trigger.type === "hybrid") {
+    if ((entry.trigger.type === "event" || entry.trigger.type === "hybrid") && !this.isDedicatedEventLoop(entry.id)) {
       const ev = entry.trigger.type === "hybrid" ? entry.trigger.event : entry.trigger;
       this.subscribeEvent(entry, ev.source, ev.filter);
     }

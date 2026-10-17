@@ -56,6 +56,7 @@ export interface LoopToolsOptions {
   updateWidget: () => void;
   isReadOnlyGuardAvailable: () => boolean;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
+  onLoopStopped?: (loopId: string) => void;
 }
 
 function validateTrigger(trigger: Trigger): string | null {
@@ -204,6 +205,7 @@ export function registerLoopTools(options: LoopToolsOptions): void {
     updateWidget,
     isReadOnlyGuardAvailable,
     onDynamicLoopActivated,
+    onLoopStopped,
   } = options;
 
   pi.registerTool({
@@ -409,6 +411,7 @@ export function registerLoopTools(options: LoopToolsOptions): void {
           kind: "loop", action: "update", tone: "error", summary: `Loop #${params.id} update rejected`, expanded: [outcome.message],
         }));
       }
+      if (params.status !== "continue") onLoopStopped?.(params.id);
       const message = outcome.message;
       updateWidget();
       const tone = params.status === "paused" ? "warning" : "success";
@@ -451,6 +454,7 @@ export function registerLoopTools(options: LoopToolsOptions): void {
         }
         getTriggerSystem().remove(id);
         updateWidget();
+        onLoopStopped?.(id);
         return Promise.resolve(textResult(`Loop #${id} paused`, {
           kind: "loop", action: "pause", tone: "warning", summary: `Loop #${id} paused`, expanded: ["Use LoopList to inspect paused loops."],
         }));
@@ -460,6 +464,7 @@ export function registerLoopTools(options: LoopToolsOptions): void {
       const deleted = getStore().delete(id);
       updateWidget();
       if (deleted) {
+        onLoopStopped?.(id);
         return Promise.resolve(textResult(`Loop #${id} deleted`, {
           kind: "loop", action: "delete", tone: "success", summary: `Loop #${id} deleted`, expanded: [],
         }));

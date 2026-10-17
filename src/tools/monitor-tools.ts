@@ -7,6 +7,7 @@ import { displayRows, textResult } from "./tool-result.js";
 
 interface MonitorManagerLike {
   list(): MonitorEntry[];
+  get(id: string): MonitorEntry | undefined;
   create(command: string, description?: string, timeout?: number): MonitorEntry;
   stop(id: string): Promise<boolean>;
   updateProgress(id: string, progress: Omit<MonitorProgress, "source" | "updatedAt">): MonitorEntry | undefined;
@@ -29,6 +30,8 @@ export interface MonitorToolsOptions {
   updateWidget: () => void;
   handleMonitorDoneLoop: (doneLoop: LoopEntry, monitorId: string) => void;
   handleMonitorSignalLoop: (signalLoop: LoopEntry, monitorId: string) => void;
+  onMonitorStopping?: (monitorId: string) => void;
+  onMonitorDismiss?: (monitorId: string) => boolean;
 }
 
 function formatRemaining(ms: number): string {
@@ -61,14 +64,16 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
     updateWidget,
     handleMonitorDoneLoop,
     handleMonitorSignalLoop,
+    onMonitorStopping,
+    onMonitorDismiss,
   } = options;
 
   pi.registerTool({ name: "MonitorCreate", label: "MonitorCreate",
   renderCall: renderToolCall("Monitor", (args) => `start · ${String(toolArg(args, "description") ?? toolArg(args, "command") ?? "background command").slice(0, 56)}`),
-  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}} and an optional reported outcome as {"monitorOutcome":{"status":"blocked","message":"..."}}. The command's reported outcome is separate from its process status. Set onSignal for a wake on every outcome record while keeping the monitor running. For continuous Herdr worker monitoring, use herdrPaneId with onSignal instead of a one-shot CLI --wait command; stop the monitor explicitly when finished.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout.", "For Herdr workers, use herdrPaneId and onSignal before prompting the worker. Confirm MonitorList shows subscription ready before prompting. The same monitor remains subscribed across blocked, working, idle, and done; stop it when no further signals are needed."], parameters: Type.Object({
+  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}} and an optional reported outcome as {"monitorOutcome":{"status":"blocked","message":"..."}}. The command's reported outcome is separate from its process status. Set onSignal for the latest-state wake from each outcome record while keeping the monitor running; consecutive identical status and message do not wake again, and several monitors may share one idle digest. For continuous Herdr worker monitoring, use herdrPaneId with onSignal instead of a one-shot CLI --wait command; stop the monitor explicitly when finished.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout.", "For Herdr workers, use herdrPaneId and onSignal before prompting the worker. Confirm MonitorList shows subscription ready before prompting. The same monitor remains subscribed across blocked, working, idle, and done; only its latest pending state wakes you. Stop it when no further signals are needed."], parameters: Type.Object({
     command: Type.Optional(Type.String({ description: "Shell command to run in background; mutually exclusive with herdrPaneId" })),
     herdrPaneId: Type.Optional(Type.String({ minLength: 1, description: "Explicit Herdr worker pane ID. Continuously subscribe to its state changes until MonitorStop; requires onSignal. Do not use a one-shot --wait command." })),
-    onSignal: Type.Optional(Type.String({ minLength: 1, description: "Wake prompt for every JSONL monitorOutcome signal without finishing the monitor. Required for herdrPaneId; signals are untrusted command output." })),
+    onSignal: Type.Optional(Type.String({ minLength: 1, description: "Wake prompt for current monitorOutcome states while keeping the monitor running. Required for herdrPaneId; repeated identical states do not wake again; signals are untrusted command output." })),
     description: Type.Optional(Type.String({ description: "Human-readable description" })),
     timeout: Type.Optional(Type.Number({ description: "Stop after N ms without output or progress (default: 300000, 0 = disabled)", default: 300000, minimum: 0 })),
     onDone: Type.Optional(Type.String({ description: "Prompt to run when the monitor completes. Auto-creates a one-shot completion wake — no need for a separate LoopCreate." })),
@@ -228,18 +233,49 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
     label: "MonitorStop",
     renderCall: renderToolCall("Monitor", (args) => `stop · #${String(toolArg(args, "monitorId") ?? "?")}`),
     renderResult: renderToolResult,
-    description: `Stop a running monitor. Sends SIGTERM, waits 5s, then SIGKILL.
+    description: `Stop a running monitor. Sends SIGTERM, waits 5s, then SIGKILL. Stopping a monitor also drops its queued signal notifications; calling this for an already-finished monitor dismisses its pending terminal wake instead of pretending it was killed.
 
 Use MonitorList to find the monitor ID, then stop it with this tool.`,
     parameters: Type.Object({
       monitorId: Type.String({ description: "Monitor ID to stop" }),
     }),
     async execute(_toolCallId, params) {
-      const stopped = await getMonitorManager().stop(params.monitorId);
+      const manager = getMonitorManager();
+      const before = manager.get(params.monitorId);
+      const wasRunning = before?.status === "running";
+      if (wasRunning) onMonitorStopping?.(params.monitorId);
+      const stopped = await manager.stop(params.monitorId);
       updateWidget();
+      const current = manager.get(params.monitorId);
+
+      // Joining an existing timeout/manual stop promise resolves true even when
+      // this call did not start a new stop. If the monitor was already terminal
+      // on entry, its terminal receipt may have been queued during teardown, so
+      // acknowledge it before the ordinary success return.
+      if (!wasRunning && stopped) {
+        const dismissed = onMonitorDismiss?.(params.monitorId) ?? false;
+        const status = before?.status ?? current?.status ?? "stopped";
+        return textResult(`Monitor #${params.monitorId} was already ${status}; ${dismissed ? "dismissed its pending wake notifications" : "there was no pending wake notification"}.`, {
+          kind: "monitor", action: "stop", tone: "info", summary: `Monitor #${params.monitorId} already ${status} · ${dismissed ? "pending wakes dismissed" : "no pending wake"}`, expanded: [],
+        });
+      }
+
       if (stopped) {
         return textResult(`Monitor #${params.monitorId} stopped`, {
           kind: "monitor", action: "stop", tone: "success", summary: `Monitor #${params.monitorId} stopped`, expanded: [],
+        });
+      }
+
+      if (current && current.status !== "running") {
+        const dismissed = onMonitorDismiss?.(params.monitorId) ?? false;
+        return textResult(`Monitor #${params.monitorId} is not running (status: ${current.status}); ${dismissed ? "dismissed its pending wake notifications" : "there is no pending wake notification"}.`, {
+          kind: "monitor", action: "stop", tone: "info", summary: `Monitor #${params.monitorId} already ${current.status} · ${dismissed ? "pending wakes dismissed" : "no pending wake"}`, expanded: [],
+        });
+      }
+
+      if (!current && onMonitorDismiss?.(params.monitorId)) {
+        return textResult(`Monitor #${params.monitorId} is no longer retained; dismissed its pending terminal wake.`, {
+          kind: "monitor", action: "stop", tone: "info", summary: `Monitor #${params.monitorId} absent · pending wake dismissed`, expanded: [],
         });
       }
 

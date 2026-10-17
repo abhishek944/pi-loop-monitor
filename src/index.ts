@@ -34,6 +34,8 @@ export default function (pi: ExtensionAPI) {
   const monitorManager = new MonitorManager(pi);
   const widget = new LoopWidget(store, monitorManager);
   monitorManager.setOnChange(() => widget.update());
+  const dedicatedMonitorSignalLoops = new Set<string>();
+  const isDedicatedEventLoop = (loopId: string) => dedicatedMonitorSignalLoops.has(loopId);
 
   function isCurrentExtensionContext(): boolean {
     try { pi.events.emit(runtimeProbeEvent, { runtimeId, sessionGeneration }); return true; }
@@ -42,13 +44,14 @@ export default function (pi: ExtensionAPI) {
   function emitExpired(entry: LoopEntry, disposition: LoopExpiryDisposition, source: LoopExpirySource, reason: LoopExpiryReason, generation = sessionGeneration) {
     if (generation !== sessionGeneration || !isCurrentExtensionContext()) return;
     triggerSystem.remove(entry.id);
+    notificationRuntime.discardLoop(entry.id);
     const payload = buildLoopExpiredPayload(entry, disposition, source, reason, Date.now());
     try { pi.events.emit("loops:expired", payload); } catch (error) { debug("loops:expired listener failed", error); }
     void notificationRuntime.queueOrDeliverLoopExpired({ ...payload, sessionGeneration: generation }).catch((error) => debug("expiry notification failed", error));
   }
   function createScheduler(loopStore: LoopStore) { return new CronScheduler(loopStore, (entry, origin) => onLoopFire(entry, undefined, origin), (entry, disposition) => emitExpired(entry, disposition, "scheduler", "expires_at"), isCurrentExtensionContext); }
   let scheduler = createScheduler(store);
-  let triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin));
+  let triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin), isDedicatedEventLoop);
   const pendingReadOnlyRetirements = new Set<string>();
   function retireReadOnlyLoop(loopId: string) {
     triggerSystem.remove(loopId);
@@ -92,6 +95,8 @@ export default function (pi: ExtensionAPI) {
     pi,
     getHasPendingMessages: () => latestCtx?.hasPendingMessages() ?? false,
     getIsIdle: () => latestCtx?.isIdle() ?? true,
+    getMonitor: (monitorId) => monitorManager.get(monitorId),
+    getLoop: (loopId) => store.get(loopId),
     onReadOnlyGuardUnavailable: (notification, reason) => {
       const entry = store.get(notification.loopId);
       if (!entry) return;
@@ -107,7 +112,14 @@ export default function (pi: ExtensionAPI) {
   });
   const monitorOnDoneRuntime = createMonitorOnDoneRuntime({ monitorManager, getLoop: (id) => store.get(id), deleteLoop: (id) => { store.delete(id); }, onLoopFire, isContextCurrent: isCurrentExtensionContext, debug });
 
-  registerMonitorsCommand({ pi, getStore: () => store, getMonitorManager: () => monitorManager, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire });
+  const dismissLoopNotifications = (loopId: string) => notificationRuntime.discardLoop(loopId);
+
+  registerMonitorsCommand({
+    pi, getStore: () => store, getMonitorManager: () => monitorManager, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(),
+    onDynamicLoopActivated: onLoopFire,
+    onLoopStopped: dismissLoopNotifications,
+    onMonitorStopping: (monitorId) => notificationRuntime.discardMonitorSignals(monitorId),
+  });
 
   function emitLoopFire(entry: LoopEntry, monitor?: MonitorEntry) {
     const event: LoopFireEvent = { loopId: entry.id, prompt: entry.prompt, trigger: entry.trigger, timestamp: Date.now(), readOnly: entry.readOnly, recurring: entry.recurring, persistent: entry.recurring, dynamic: entry.dynamic, fireLimitReached: atMaxFires(entry), sessionGeneration, monitorOutcome: monitor ? { monitorId: monitor.id, status: monitor.status, exitCode: monitor.exitCode, stopReason: monitor.stopReason, reportedOutcome: monitor.reportedOutcome, outputLines: monitor.outputLines } : undefined };
@@ -146,7 +158,7 @@ export default function (pi: ExtensionAPI) {
 
   registerSessionRuntimeHooks({
     pi, getSessionGeneration: () => sessionGeneration, advanceSessionGeneration: () => ++sessionGeneration,
-    recreateSessionStore: (sessionId) => { store = new LoopStore(resolveLoopStorePath(sessionId)); widget.setStore(store); scheduler = createScheduler(store); triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin)); },
+    recreateSessionStore: (sessionId) => { dedicatedMonitorSignalLoops.clear(); store = new LoopStore(resolveLoopStorePath(sessionId)); widget.setStore(store); scheduler = createScheduler(store); triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin), isDedicatedEventLoop); },
     getStore: () => store, getScheduler: () => scheduler, getTriggerSystem: () => triggerSystem,
     setLatestCtx: (ctx) => { latestCtx = ctx; }, setSessionId: () => {}, widget, notificationRuntime,
     flushPendingNotifications: notificationRuntime.flushPendingNotifications, retryReadOnlyRetirements, finalizeReadOnlyRetirements, recoverReadOnlyRetirements, shutdownMonitors: () => monitorManager.shutdown(), isContextCurrent: isCurrentExtensionContext,
@@ -154,13 +166,14 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.events.on("monitor:started", async (event: unknown) => { const data = event as { monitorId?: string; command?: string; description?: string; timestamp?: number }; if (data.monitorId && data.command) await notificationRuntime.queueOrDeliverMonitorStarted({ monitorId: data.monitorId, command: data.command, description: data.description, timestamp: data.timestamp ?? Date.now(), sessionGeneration }); });
-  pi.events.on("monitor:finished", (event: unknown) => { const id = (event as { monitorId?: string }).monitorId; if (id) notificationRuntime.discardMonitorStarted(id); });
+  pi.events.on("monitor:finished", (event: unknown) => { const id = (event as { monitorId?: string }).monitorId; if (!id) return; notificationRuntime.discardMonitorStarted(id); notificationRuntime.discardMonitorSignals(id); });
 
-  registerLoopTools({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, getScheduler: () => scheduler, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(), isReadOnlyGuardAvailable: () => isReadOnlyWakeGuardAvailable(pi), onDynamicLoopActivated: onLoopFire });
+  registerLoopTools({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, getScheduler: () => scheduler, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(), isReadOnlyGuardAvailable: () => isReadOnlyWakeGuardAvailable(pi), onDynamicLoopActivated: onLoopFire, onLoopStopped: dismissLoopNotifications });
   registerMonitorTools({
     pi, getStore: () => store, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(),
     handleMonitorDoneLoop: (doneLoop, monitorId) => monitorOnDoneRuntime.register(doneLoop, monitorId),
     handleMonitorSignalLoop: (signalLoop, monitorId) => {
+      dedicatedMonitorSignalLoops.add(signalLoop.id);
       const generation = sessionGeneration;
       const unsubscribe = pi.events.on("monitor:signal", (event: unknown) => {
         const data = event as { monitorId?: string; outcome?: unknown };
@@ -170,6 +183,7 @@ export default function (pi: ExtensionAPI) {
         if (current?.status !== "active" || monitor?.status !== "running") return;
         if (Date.now() >= current.expiresAt) {
           const expired = store.expireEntry(current.id, Date.now());
+          dedicatedMonitorSignalLoops.delete(current.id);
           if (expired) emitExpired(expired.entry, expired.disposition, "scheduler", "expires_at");
           unsubscribe();
           return;
@@ -178,9 +192,12 @@ export default function (pi: ExtensionAPI) {
       });
       monitorManager.onTerminal(monitorId, () => {
         unsubscribe();
-        if (generation === sessionGeneration && isCurrentExtensionContext()) { store.delete(signalLoop.id); widget.update(); }
+        dedicatedMonitorSignalLoops.delete(signalLoop.id);
+        if (generation === sessionGeneration && isCurrentExtensionContext()) { store.delete(signalLoop.id); notificationRuntime.discardLoop(signalLoop.id); widget.update(); }
       });
     },
+    onMonitorStopping: (monitorId) => notificationRuntime.discardMonitorSignals(monitorId),
+    onMonitorDismiss: (monitorId) => notificationRuntime.dismissMonitor(monitorId),
   });
-  registerLoopCommand({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire });
+  registerLoopCommand({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(), onDynamicLoopActivated: onLoopFire, onLoopStopped: dismissLoopNotifications });
 }

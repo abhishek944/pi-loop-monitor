@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.7 - 2026-10-17
+
+- Prepare the dedicated full-output monitor feature for npm distribution under a fresh patch version; runtime behavior is unchanged from 0.2.6.
+
 ## 0.2.6 - 2026-10-16
 
 - Open a dedicated live output window for a selected monitor, with Escape returning to the loops and monitors overview.

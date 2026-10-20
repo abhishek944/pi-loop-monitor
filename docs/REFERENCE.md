@@ -32,6 +32,10 @@ Monitors run detached process groups, retain a bounded 200-line tool tail, rate-
 
 Events: `monitor:started`, `monitor:output`, `monitor:signal`, `monitor:finished`, `monitor:done`, `monitor:error`, `loop:fire`, and `loops:expired`.
 
+## Monitor tool results
+
+A successful `MonitorCreate` adds `details.monitorId` so other tools can return the actual allocated ID without parsing human text. All text, rendering, callbacks and monitor behavior remain unchanged. Use MonitorList to inspect status/output as before.
+
 ## Limits
 
 - 25 stored loops per session (hard limit, including active, paused, and monitor wake loops)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.9 - 2026-10-21
+
+- Expose `details.monitorId` on successful `MonitorCreate` results so wrappers can return the allocated ID without parsing display text; monitoring and callback behavior are unchanged.
+- Rename the npm package to `@abhishek944/pi-loop-monitor` and declare public publishing access. Existing `pi-loop-monitor` installations must migrate explicitly after the scoped package is published; runtime identifiers and state paths are unchanged.
+
 ## 0.2.8 - 2026-10-17
 
 - Replace queued per-event monitor signal wakes with one latest-state mailbox per monitor subscription and a compatible idle digest; consecutive identical reported states no longer enqueue notification work.

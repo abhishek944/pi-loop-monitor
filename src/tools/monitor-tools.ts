@@ -141,6 +141,7 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
         action: "create",
         tone: "success",
         summary: `Monitor #${entry.id} running · ${params.description ?? entry.command.slice(0, 48)}`,
+        monitorId: entry.id,
         expanded: [
           `Command: ${entry.command}`,
           `Inactivity timeout: ${entry.timeout > 0 ? `${entry.timeout / 1000}s` : "none"}`,

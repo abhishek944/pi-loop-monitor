@@ -15,6 +15,8 @@ export interface ToolDisplayDetails {
   summary: string;
   expanded?: string[];
   expandable?: boolean;
+  /** Stable monitor identity for a MonitorCreate success. */
+  monitorId?: string;
 }
 
 export function displayRows(rows: string[], limit = 8): string[] {

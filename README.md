@@ -1,4 +1,4 @@
-# pi-loop-monitor
+# @abhishek944/pi-loop-monitor
 
 A Pi extension that provides persistent agent wake loops and background command monitors. It requires Pi 0.84.3 or newer.
 
@@ -6,7 +6,23 @@ This project was adapted from [trvon/pi-loop](https://github.com/trvon/pi-loop) 
 
 ## Installation
 
-Read-only wakes require the Pi Ask guard. Install `@abhishek944/pi-ask@0.2.0` or newer first. To use this checkout before its npm release, run `npm run build` and `pi install /absolute/path/to/pi-loop-monitor` (personal scope), then run `/reload` in Pi. Once published to npm, install `pi-loop-monitor@0.2.8` instead.
+Read-only wakes require the Pi Ask guard. Install `@abhishek944/pi-ask@0.2.0` or newer first. To use this checkout before its npm release, run `npm run build` and `pi install /absolute/path/to/pi-loop-monitor` (personal scope), then run `/reload` in Pi. Once published to npm, install the scoped package instead:
+
+```sh
+pi install npm:@abhishek944/pi-loop-monitor
+```
+
+### Migrating from the unscoped package
+
+`@abhishek944/pi-loop-monitor` is a separate npm package from `pi-loop-monitor`. `pi update --extensions` does not migrate package names automatically. Only after the scoped package has been published and is available, stop active loops/monitors and run:
+
+```sh
+npm view @abhishek944/pi-loop-monitor version &&
+  pi remove npm:pi-loop-monitor &&
+  pi install npm:@abhishek944/pi-loop-monitor
+```
+
+Then run `/reload` in Pi. If the version lookup fails, do not remove the old package. For a project-local installation, use `--local` with both `pi remove` and `pi install` from that project. Replace any direct imports such as `pi-loop-monitor/api` with `@abhishek944/pi-loop-monitor/api`. The repository directory, tool names, runtime identifiers, and session-state paths are unchanged.
 
 ## Surface
 

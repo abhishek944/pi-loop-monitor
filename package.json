@@ -1,8 +1,11 @@
 {
-  "name": "pi-loop-monitor",
-  "version": "0.2.8",
+  "name": "@abhishek944/pi-loop-monitor",
+  "version": "0.2.9",
   "description": "Pi extension for persistent loop wakes\n and background process monitoring.",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.19.0"

@@ -64,7 +64,7 @@
     "lint:fix": "biome check --fix src/"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.13",
+    "@biomejs/biome": "^2.5.15",
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-tui": "1.0.2",
     "@types/node": "^26.1.2",

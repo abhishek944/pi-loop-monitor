@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.10 - 2026-11-03
+
+- Add a native read-only Herdr Loops/Monitors activity view opened with `/monitors herdr-on`, plus `/monitors compact-on|compact-off` and `herdr-off` display controls that never stop loops or monitors. It reads a bounded session/runtime/terminal projection, freezes and labels stale data, and installs bundled mod assets without overwriting customizations.
+- Replace `herdrPaneId` subscription monitors with Core `hcTerminalId` plus `onSignal` subscriptions that follow worker turns, native program status and process lifecycle while keeping latest-state wake coalescing. Confirm `Core signal subscription ready` before prompting; `onDone` means the subscriber ended, not task completion.
+- Add a settings-only Durable 1.1 extension at `@abhishek944/pi-loop-monitor/durable` for conversation-owned loops and monitors. Cron, interval and idle triggers use cancellation-aware durable wakes, event and hybrid triggers and `readOnly` are rejected, and recovery marks a re-entered monitor `unknown` instead of respawning it.
+
 ## 0.2.9 - 2026-10-21
 
 - Expose `details.monitorId` on successful `MonitorCreate` results so wrappers can return the allocated ID without parsing display text; monitoring and callback behavior are unchanged.

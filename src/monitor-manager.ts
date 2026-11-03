@@ -30,6 +30,7 @@ export class MonitorManager {
   private readonly outputLogs = new Map<string, MonitorOutputLog>();
   private nextId = 1;
   private onChange: (() => void) | undefined;
+  private onDisplayChange: (() => void) | undefined;
   private spawnFn: SpawnFn;
   private platform: NodeJS.Platform;
   private taskkillSpawn: SpawnFn;
@@ -56,6 +57,9 @@ export class MonitorManager {
   setOnChange(cb: () => void): void {
     if (!this.shuttingDown) this.onChange = cb;
   }
+
+  /** Display-only invalidation, including output. The publisher coalesces writes. */
+  setOnDisplayChange(callback: () => void): void { this.onDisplayChange = callback; }
 
   private toReducerState(): MonitorReducerState {
     return {
@@ -87,6 +91,7 @@ export class MonitorManager {
     ) {
       this.notifyChange();
     }
+    this.onDisplayChange?.();
     return result;
   }
 
@@ -197,7 +202,7 @@ export class MonitorManager {
     timer.unref?.();
   }
 
-  create(command: string, description?: string, timeout = 300000): MonitorEntry {
+  create(command: string, description?: string, timeout = 300000, hcTerminalId?: string): MonitorEntry {
     if (this.list().filter((monitor) => monitor.status === "running").length >= MAX_RUNNING_MONITORS) {
       throw new Error(`Maximum of ${MAX_RUNNING_MONITORS} running monitors reached. Stop some before creating new ones.`);
     }
@@ -219,6 +224,7 @@ export class MonitorManager {
     this.nextId = result.state.nextId;
     const id = String(this.nextId - 1);
     const entry = result.state.monitorsById[id]!;
+    if (hcTerminalId !== undefined) entry.hcTerminalId = hcTerminalId;
 
     const abortController = new AbortController();
     const log = new MonitorOutputLog();
@@ -347,6 +353,7 @@ export class MonitorManager {
     this.scheduleInactivityCheck(id, bp);
 
     this.processes.set(id, bp);
+    this.onDisplayChange?.();
     this.emit("monitor:started", {
       monitorId: id,
       command,

@@ -16,6 +16,8 @@ export interface MonitorsCommandOptions {
   getMonitorManager: () => MonitorManager;
   getTriggerSystem: () => TriggerSystemLike;
   updateWidget: () => void;
+  setCompactVisible: (visible: boolean) => void;
+  setHerdrVisible: (ctx: ExtensionCommandContext, visible: boolean) => Promise<void>;
   onDynamicLoopActivated?: (entry: LoopEntry) => void;
   onLoopStopped?: (loopId: string) => void;
   onMonitorStopping?: (monitorId: string) => void;
@@ -43,8 +45,23 @@ export function registerMonitorsCommand(options: MonitorsCommandOptions): void {
   });
 
   pi.registerCommand("monitors", {
-    description: "Open the loops and background monitors dashboard",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+    description: "Open the dashboard; compact-on/off controls the Pi display, herdr-on/off controls the native panel",
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
+      const requested = args.trim();
+      if (requested === "compact-on" || requested === "compact-off") {
+        options.setCompactVisible(requested === "compact-on");
+        ctx.ui.notify(`Monitors compact display: ${requested === "compact-on" ? "on" : "off"}`, "info");
+        return;
+      }
+      if (requested === "herdr-on" || requested === "herdr-off") {
+        try {
+          const visible = requested === "herdr-on";
+          await options.setHerdrVisible(ctx, visible);
+          ctx.ui.notify(visible ? "Opened the Herdr Loops/Monitors pane." : "Closed this session’s Herdr Loops/Monitors pane.", "info");
+        } catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
+        return;
+      }
+      if (requested) { ctx.ui.notify("Use /monitors [compact-on|compact-off|herdr-on|herdr-off].", "error"); return; }
       if (ctx.mode !== "tui") {
         throw new Error("/monitors requires interactive TUI mode");
       }

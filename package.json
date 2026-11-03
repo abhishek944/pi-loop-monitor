@@ -21,6 +21,7 @@
   ],
   "files": [
     "dist/",
+    "herdr/",
     "docs/USAGE_GUIDE.md",
     "docs/REFERENCE.md",
     "README.md",
@@ -37,16 +38,25 @@
       "import": "./dist/api.js",
       "default": "./dist/api.js"
     },
+    "./durable": {
+      "types": "./dist/durable.d.ts",
+      "import": "./dist/durable.js",
+      "default": "./dist/durable.js"
+    },
     "./package.json": "./package.json"
   },
   "peerDependencies": {
     "@abhishek944/pi-ask": ">=0.2.0",
     "@earendil-works/pi-coding-agent": ">=0.84.3",
+    "@earendil-works/pi-durable": "1.1.0",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "peerDependenciesMeta": {
     "@abhishek944/pi-ask": {
+      "optional": true
+    },
+    "@earendil-works/pi-durable": {
       "optional": true
     }
   },
@@ -66,6 +76,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",
     "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-durable": "1.1.0",
     "@earendil-works/pi-tui": "1.0.2",
     "@types/node": "^26.1.2",
     "typebox": "1.3.16",

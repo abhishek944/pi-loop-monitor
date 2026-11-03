@@ -55,6 +55,8 @@ export interface MonitorEntry {
   id: string;
   command: string;
   description?: string;
+  /** Present only when created through the explicit Core subscription tool input. */
+  hcTerminalId?: string;
   timeout: number;
   status: "running" | "completed" | "error" | "stopped";
   startedAt: number;

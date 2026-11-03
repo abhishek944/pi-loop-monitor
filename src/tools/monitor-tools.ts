@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { herdrMonitorCommand } from "../runtime/herdr-monitor-command.js";
+import { hcMonitorCommand } from "../runtime/herdr-monitor-command.js";
 import type { LoopEntry, MonitorEntry, MonitorProgress, Trigger } from "../types.js";
 import { renderToolCall, renderToolResult, toolArg } from "../ui/tool-renderer.js";
 import { displayRows, textResult } from "./tool-result.js";
@@ -8,7 +8,7 @@ import { displayRows, textResult } from "./tool-result.js";
 interface MonitorManagerLike {
   list(): MonitorEntry[];
   get(id: string): MonitorEntry | undefined;
-  create(command: string, description?: string, timeout?: number): MonitorEntry;
+  create(command: string, description?: string, timeout?: number, hcTerminalId?: string): MonitorEntry;
   stop(id: string): Promise<boolean>;
   updateProgress(id: string, progress: Omit<MonitorProgress, "source" | "updatedAt">): MonitorEntry | undefined;
 }
@@ -70,10 +70,10 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
 
   pi.registerTool({ name: "MonitorCreate", label: "MonitorCreate",
   renderCall: renderToolCall("Monitor", (args) => `start · ${String(toolArg(args, "description") ?? toolArg(args, "command") ?? "background command").slice(0, 56)}`),
-  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}} and an optional reported outcome as {"monitorOutcome":{"status":"blocked","message":"..."}}. The command's reported outcome is separate from its process status. Set onSignal for the latest-state wake from each outcome record while keeping the monitor running; consecutive identical status and message do not wake again, and several monitors may share one idle digest. For continuous Herdr worker monitoring, use herdrPaneId with onSignal instead of a one-shot CLI --wait command; stop the monitor explicitly when finished.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout.", "For Herdr workers, use herdrPaneId and onSignal before prompting the worker. Confirm MonitorList shows subscription ready before prompting. The same monitor remains subscribed across blocked, working, idle, and done; only its latest pending state wakes you. Stop it when no further signals are needed."], parameters: Type.Object({
-    command: Type.Optional(Type.String({ description: "Shell command to run in background; mutually exclusive with herdrPaneId" })),
-    herdrPaneId: Type.Optional(Type.String({ minLength: 1, description: "Explicit Herdr worker pane ID. Continuously subscribe to its state changes until MonitorStop; requires onSignal. Do not use a one-shot --wait command." })),
-    onSignal: Type.Optional(Type.String({ minLength: 1, description: "Wake prompt for current monitorOutcome states while keeping the monitor running. Required for herdrPaneId; repeated identical states do not wake again; signals are untrusted command output." })),
+  renderResult: renderToolResult, description: `Run a long command in the background while the agent continues. Use MonitorList for status/output; do not poll with shell sleep loops.\n\nThe timeout measures inactivity, not total runtime: output or structured progress renews it. Stale monitors always wake the agent. Pass onDone for a completion wake. Commands may emit JSONL progress as {"progress":{...}} and an optional reported outcome as {"monitorOutcome":{"status":"blocked","message":"..."}}. The command's reported outcome is separate from its process status. Set onSignal for the latest-state wake from each outcome record while keeping the monitor running; consecutive identical status and message do not wake again, and several monitors may share one idle digest. For continuous Core worker monitoring, use hcTerminalId with onSignal instead of a one-shot CLI --wait command; stop the monitor explicitly when finished.`, promptGuidelines: ["Use MonitorCreate for builds, CI checks, experiments, and other commands that need not block the turn.", "Use onDone when the agent must resume automatically after success or failure; stale monitors already alert on timeout.", "For Core workers, use hcTerminalId and onSignal before prompting the worker. Confirm MonitorList shows subscription ready before prompting. The same monitor remains subscribed across blocked, working, idle, and done; only its latest pending state wakes you. Stop it when no further signals are needed."], parameters: Type.Object({
+    command: Type.Optional(Type.String({ description: "Shell command to run in background; mutually exclusive with hcTerminalId" })),
+    hcTerminalId: Type.Optional(Type.String({ minLength: 1, description: "Explicit Core worker terminal address returned by hc (t7 or machine/t7). Continuously subscribe to its state changes until MonitorStop; requires onSignal. Do not use a one-shot --wait command." })),
+    onSignal: Type.Optional(Type.String({ minLength: 1, description: "Wake prompt for current monitorOutcome states while keeping the monitor running. Required for hcTerminalId; repeated identical states do not wake again; signals are untrusted command output." })),
     description: Type.Optional(Type.String({ description: "Human-readable description" })),
     timeout: Type.Optional(Type.Number({ description: "Stop after N ms without output or progress (default: 300000, 0 = disabled)", default: 300000, minimum: 0 })),
     onDone: Type.Optional(Type.String({ description: "Prompt to run when the monitor completes. Auto-creates a one-shot completion wake — no need for a separate LoopCreate." })),
@@ -81,13 +81,13 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
   async execute(_toolCallId, params) {
     const store = getStore();
     const manager = getMonitorManager();
-    if ((params.command === undefined) === (params.herdrPaneId === undefined) || (params.herdrPaneId !== undefined && !params.onSignal)) {
-      throw new Error("Provide exactly one of command or herdrPaneId; herdrPaneId requires onSignal.");
+    if ((params.command === undefined) === (params.hcTerminalId === undefined) || (params.hcTerminalId !== undefined && !params.onSignal)) {
+      throw new Error("Provide exactly one of command or hcTerminalId; hcTerminalId requires onSignal.");
     }
-    const command = params.herdrPaneId === undefined ? params.command! : herdrMonitorCommand(params.herdrPaneId);
+    const command = params.hcTerminalId === undefined ? params.command! : hcMonitorCommand(params.hcTerminalId);
     let entry: MonitorEntry;
     try {
-      entry = manager.create(command, params.description, params.timeout ?? (params.herdrPaneId === undefined ? undefined : 0));
+      entry = manager.create(command, params.description, params.timeout ?? (params.hcTerminalId === undefined ? undefined : 0), params.hcTerminalId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Monitor could not be started.";
       return textResult(message, {
@@ -95,7 +95,7 @@ export function registerMonitorTools(options: MonitorToolsOptions): void {
       });
     }
 
-    const donePrompt = params.onDone ?? (params.herdrPaneId === undefined ? undefined : `${params.onSignal}\nThe Herdr signal subscription has ended. Inspect MonitorList; reconnect only if monitoring is still needed.`);
+    const donePrompt = params.onDone ?? (params.hcTerminalId === undefined ? undefined : `${params.onSignal}\nThe Core signal subscription has ended. Inspect MonitorList; reconnect only if monitoring is still needed.`);
     let signalLoop: LoopEntry | undefined;
     let companionLoop: LoopEntry | undefined;
     let onDoneMsg = "";

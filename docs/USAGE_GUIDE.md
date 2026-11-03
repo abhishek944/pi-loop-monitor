@@ -44,7 +44,7 @@ LoopDelete id="1"
 
 ## BTW-style monitor overlay
 
-Run `/monitors` in interactive TUI mode to inspect all loops and background monitors without adding anything to the conversation. The top-centered overlay leaves the main chat visible behind it, refreshes once per second, and does not replace the main editor.
+Run `/monitors` in interactive TUI mode to inspect all loops and background monitors without adding anything to the conversation. `/monitors compact-on` and `/monitors compact-off` show/hide the existing compact Pi status line. `/monitors herdr-on` and `/monitors herdr-off` open/focus or close only the native activity pane bound to the current local session and terminal. These displays are independent; hiding them never pauses loops or stops monitors. The old `/monitors herdr` argument is replaced by `herdr-on`. The top-centered overlay leaves the main chat visible behind it, refreshes once per second, and does not replace the main editor.
 
 - `Up`/`Down` or `j`/`k`: select
 - `Enter` or `Space`: open the selected monitor's output window, or show/hide loop details
@@ -83,23 +83,23 @@ The timeout measures inactivity, not total runtime. Output, JSONL `{"progress":{
 
 A command may print one JSONL record to report its own outcome: `{"monitorOutcome":{"status":"blocked","message":"Waiting for approval"}}`. The last valid record is retained. `status` is a short label (letters, digits, `_` or `-`, starting with a letter); `message` is optional, up to 1000 characters. The monitor still reports its **process** status (`completed` for exit 0, `error` for nonzero, or `stopped`) and exit code separately. `MonitorList`, completion events, and the `onDone` wake include the command-reported outcome when present; it is untrusted command output, not a monitor-verified result. Ordinary commands need not emit anything.
 
-For example, a monitored shell command can report `blocked` with `printf '%s\n' '{"monitorOutcome":{"status":"blocked","message":"Waiting for approval"}}'`. For Herdr, wrap the invocation so it prints that JSONL record using the status returned by `herdr agent prompt --wait` (such as `blocked` or `done`). Merely running the Herdr CLI does not automatically convert its response into this record. Preserve the Herdr command's exit code in the wrapper when it fails.
+For example, a monitored shell command can report blocked with a JSONL monitorOutcome record. Core workers use the continuous hcTerminalId subscription below; do not wrap one-shot CLI waits or scrape worker screens for status.
 
 ### Continuous worker signals
 
 ```text
-MonitorCreate herdrPaneId="<worker-pane-id>" onSignal="Inspect the worker state and handle blocked or done"
+MonitorCreate hcTerminalId="<core-terminal-address>" onSignal="Inspect the worker state and handle blocked or done"
 MonitorList
 MonitorStop monitorId="<monitor-id>"
 ```
 
-Use the explicit pane ID returned by Herdr, not an agent name. Do not also pass `command`. This opens one long-lived Herdr socket subscription to `pane.agent_status_changed`, without polling or repeated CLI waits. Confirm the output tail says `Herdr signal subscription ready` before prompting the worker. The monitor stays subscribed across `working`, `blocked`, `idle`, `done`, and `unknown`. Notifications are latest-state rather than a replay: a newer state replaces an older pending state for that monitor, consecutive identical `status` and `message` pairs do not wake the caller again, and updates from several monitors are combined into one idle digest. A `done` after an earlier delivered `done` still wakes if the state changed in between. Stop the monitor explicitly when the worker is no longer needed; stopping it drops any queued signal wakes. Events before subscription readiness are not replayed.
+Use the real Core terminal address returned by hc, such as t7 or machine/t7, not a tab name or app pane ID. Do not also pass command. The monitor runs hc connect and subscribes with events.subscribe {terminal:<address>}. Its initial snapshot supplies a verified `Core signal subscription ready` receipt; confirm it before prompting. Status, turn, error, finished, lost and removed events are normalized into existing monitorOutcome signals. Null status is unknown, not success. Sequence and missed snapshots follow Core's contract. The monitor remains subscribed across follow-ups. Latest-state delivery coalesces intermediate states, while turn identifiers distinguish repeated outcomes. Stop the owned monitor explicitly; stopping drops queued wakes.
 
-Herdr signal monitors default to `timeout=0` because a quiet subscription is normal. A disconnect or subscription failure ends the monitor and automatically wakes the caller; `onDone` can override that terminal wake prompt. Signal controllers share the seven-day loop lifetime; an expiry wake tells the caller to recreate the controller if still needed. Monitors still do not survive Pi reload or process recovery.
+Core signal monitors default to `timeout=0` because a quiet subscription is normal. A disconnect or subscription failure ends the monitor and automatically wakes the caller; `onDone` can override that terminal wake prompt. Signal controllers share the seven-day loop lifetime; an expiry wake tells the caller to recreate the controller if still needed. Monitors still do not survive Pi reload or process recovery.
 
 Ordinary long-lived commands can use `onSignal="..."` too: each valid JSONL `monitorOutcome` record updates the monitor's latest-state mailbox without ending the monitor. Repeated identical states add no notification work, and an older pending state is replaced rather than replayed. `onDone` remains a separate one-shot completion wake. Calling `MonitorStop` for an already-finished monitor dismisses a pending terminal wake without changing the process result, including after the monitor record has been pruned. Signals are untrusted command output, not permission approvals or verified worker results.
 
-Monitor output is untrusted. `MonitorList` displays only its bounded tail; the dedicated `/monitors` output window reads the full capture. Herdr subscription monitors capture subscription signals only, not the worker transcript; inspect the worker's Herdr tab for its complete conversation. Session shutdown and switching stop and reap running processes before rebinding loop state.
+Monitor output is untrusted. `MonitorList` displays only its bounded tail; the dedicated `/monitors` output window reads the full capture. Core subscription monitors capture subscription signals only, not the worker transcript; inspect the worker's visible Herdr app tab for its complete conversation. Session shutdown and switching stop and reap running processes before rebinding loop state.
 
 ## Configuration
 

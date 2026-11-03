@@ -5,10 +5,15 @@ import type { LoopEntry } from "../types.js";
 
 export class LoopWidget {
   private uiCtx: ExtensionUIContext | undefined;
-  constructor(private store: LoopStore, private monitorManager: MonitorManager) {}
+  private visible = process.env.PI_LOOP_MONITOR_TUI_STATUS === "1";
+  constructor(private store: LoopStore, private monitorManager: MonitorManager, private onUpdate?: () => void) {}
   setUICtx(ctx: ExtensionUIContext) { this.uiCtx = ctx; }
   setStore(store: LoopStore) { this.store = store; }
-  update() { if (this.uiCtx) this.uiCtx.setStatus("loops", this.computeStatus()); }
+  setVisible(visible: boolean) { this.visible = visible; this.update(); }
+  update() {
+    this.onUpdate?.();
+    if (this.uiCtx) this.uiCtx.setStatus("loops", this.visible ? this.computeStatus() : undefined);
+  }
   private computeStatus(): string | undefined {
     const loops = this.store.list().filter(isStatusVisibleLoop);
     const monitors = this.monitorManager.list().filter((monitor) => monitor.status === "running");

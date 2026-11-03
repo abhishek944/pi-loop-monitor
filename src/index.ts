@@ -1,8 +1,10 @@
 /** Private pi-loop-monitor extension for persistent loop wakes and background process monitoring. */
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { ActivityProjection } from "./activity-projection.js";
 import { registerLoopCommand } from "./commands/loop-command.js";
 import { registerMonitorsCommand } from "./commands/monitors-command.js";
+import { setHerdrActivityPaneVisible } from "./herdr-panel.js";
 import { atMaxFires } from "./loop-reducer.js";
 import { MonitorManager } from "./monitor-manager.js";
 import { buildLoopExpiredPayload } from "./runtime/loop-events.js";
@@ -32,7 +34,9 @@ export default function (pi: ExtensionAPI) {
   let latestCtx: ExtensionContext | undefined;
   let store = new LoopStore(resolveLoopStorePath());
   const monitorManager = new MonitorManager(pi);
-  const widget = new LoopWidget(store, monitorManager);
+  const projection = new ActivityProjection(runtimeId, () => store, monitorManager, isCurrentExtensionContext);
+  const widget = new LoopWidget(store, monitorManager, () => projection.schedule());
+  monitorManager.setOnDisplayChange(() => projection.schedule());
   monitorManager.setOnChange(() => widget.update());
   const dedicatedMonitorSignalLoops = new Set<string>();
   const isDedicatedEventLoop = (loopId: string) => dedicatedMonitorSignalLoops.has(loopId);
@@ -116,6 +120,8 @@ export default function (pi: ExtensionAPI) {
 
   registerMonitorsCommand({
     pi, getStore: () => store, getMonitorManager: () => monitorManager, getTriggerSystem: () => triggerSystem, updateWidget: () => widget.update(),
+    setCompactVisible: (visible) => widget.setVisible(visible),
+    setHerdrVisible: (ctx, visible) => setHerdrActivityPaneVisible(ctx, visible, visible ? projection.flush() : undefined),
     onDynamicLoopActivated: onLoopFire,
     onLoopStopped: dismissLoopNotifications,
     onMonitorStopping: (monitorId) => notificationRuntime.discardMonitorSignals(monitorId),
@@ -154,13 +160,14 @@ export default function (pi: ExtensionAPI) {
       }
     }
     emitLoopFire(delivered, monitor);
+    widget.update();
   }
 
   registerSessionRuntimeHooks({
     pi, getSessionGeneration: () => sessionGeneration, advanceSessionGeneration: () => ++sessionGeneration,
-    recreateSessionStore: (sessionId) => { dedicatedMonitorSignalLoops.clear(); store = new LoopStore(resolveLoopStorePath(sessionId)); widget.setStore(store); scheduler = createScheduler(store); triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin), isDedicatedEventLoop); },
+    recreateSessionStore: (sessionId) => { dedicatedMonitorSignalLoops.clear(); store = new LoopStore(resolveLoopStorePath(sessionId)); widget.setStore(store); scheduler = createScheduler(store); triggerSystem = new TriggerSystem(pi, scheduler, store, (entry, origin) => onLoopFire(entry, undefined, origin), isDedicatedEventLoop); projection.bind(sessionId); },
     getStore: () => store, getScheduler: () => scheduler, getTriggerSystem: () => triggerSystem,
-    setLatestCtx: (ctx) => { latestCtx = ctx; }, setSessionId: () => {}, widget, notificationRuntime,
+    setLatestCtx: (ctx) => { latestCtx = ctx; }, setSessionId: (sessionId) => { if (sessionId === undefined) projection.bind(undefined); }, widget, notificationRuntime,
     flushPendingNotifications: notificationRuntime.flushPendingNotifications, retryReadOnlyRetirements, finalizeReadOnlyRetirements, recoverReadOnlyRetirements, shutdownMonitors: () => monitorManager.shutdown(), isContextCurrent: isCurrentExtensionContext,
     emitLoopExpired: (entry, disposition, reason, generation) => emitExpired(entry, disposition, "session_recovery", reason, generation),
   });

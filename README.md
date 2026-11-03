@@ -1,3 +1,6 @@
+> **Moved to Astack**
+> This repository is archived and read-only. Development is maintained in the [Astack monorepo](https://github.com/abhishek944/astack); see [packages/pi-loop-monitor](https://github.com/abhishek944/astack/tree/main/packages/pi-loop-monitor).
+
 # @abhishek944/pi-loop-monitor
 
 A Pi extension that provides persistent agent wake loops and background command monitors. It requires Pi 0.84.3 or newer.
